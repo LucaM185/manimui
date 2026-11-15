@@ -10,12 +10,22 @@ const { spawn } = require('child_process');
 if (process.env.APPIMAGE_EXIT_AFTER_INSTALL === 'true') process.exit(0);
 
 const ROOT = path.join(__dirname, '..');
-// A packaged build (Linux AppImage / .deb) carries the engine, a standalone Python with ManimGL,
-// ffmpeg and the search model next to app.asar in resources/; from source they live in engine/.
+// A packaged build (Linux AppImage / .deb, Mac .app, Windows install) carries the engine, a
+// standalone Python with ManimGL, ffmpeg and the search model next to app.asar in resources/; from
+// source they live in engine/.
+const WIN = process.platform === 'win32';
 const BUNDLED = app.isPackaged && fs.existsSync(path.join(process.resourcesPath, 'python'));
 const RES = BUNDLED ? process.resourcesPath : null;
 const ENGINE_DIR = BUNDLED ? path.join(RES, 'engine') : path.join(ROOT, 'engine');
-const PYTHON = process.env.MATHSTUDIO_PYTHON || (BUNDLED ? path.join(RES, 'python', 'bin', 'python3') : path.join(ENGINE_DIR, '.venv', 'bin', 'python'));
+// python-build-standalone keeps python.exe (and our ffmpeg.exe) at the top on Windows, in bin/ elsewhere
+const PY_BIN = BUNDLED ? (WIN ? path.join(RES, 'python') : path.join(RES, 'python', 'bin')) : null;
+const PYTHON = process.env.MATHSTUDIO_PYTHON || (BUNDLED ? path.join(PY_BIN, WIN ? 'python.exe' : 'python3')
+  : path.join(ENGINE_DIR, '.venv', WIN ? 'Scripts' : 'bin', WIN ? 'python.exe' : 'python'));
+// Windows builds also carry Mesa's software OpenGL (llvmpipe), used only when the PC has no working
+// OpenGL 3.3 driver (VMs, remote desktop, very old GPUs): the engine then says GLFAIL and is
+// restarted on it. MATHSTUDIO_SOFTWARE_GL=1 forces it.
+const MESA_DIR = BUNDLED && WIN ? path.join(RES, 'mesa') : null;
+let softwareGL = WIN && process.env.MATHSTUDIO_SOFTWARE_GL === '1';
 // AppImages can't ship the setuid chrome-sandbox, and Ubuntu 24.04+ blocks the user-namespace
 // sandbox for unconfined apps, so Electron would abort at launch. The app only loads its own files.
 if (process.platform === 'linux' && process.env.APPIMAGE) app.commandLine.appendSwitch('no-sandbox');
@@ -52,16 +62,26 @@ function startEngine() {
       return;
     }
     const env = { ...process.env, PYTHONWARNINGS: 'ignore', MATHSTUDIO_PLAN: account().plan, MATHSTUDIO_AUTHOR: account().name };
+    // Windows spells it "Path", and a spread copy of process.env is case-sensitive: setting PATH
+    // next to it would leave the child with two (which one wins is undefined)
+    const PK = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') || 'PATH';
+    // files without an explicit encoding (scene.py with "π", JSON…) would be cp1252 there
+    if (WIN) env.PYTHONUTF8 = '1';
     let cwd = ENGINE_DIR;
     if (BUNDLED) {
       // the install dir is read-only: manimgl writes videos/ etc. relative to the cwd
       fs.mkdirSync(DATA_DIR, { recursive: true });
       cwd = DATA_DIR;
-      env.PATH = `${path.join(RES, 'python', 'bin')}${path.delimiter}${env.PATH || ''}`; // bundled ffmpeg
+      env[PK] = `${PY_BIN}${path.delimiter}${env[PK] || ''}`; // bundled ffmpeg
       env.PYTHONNOUSERSITE = '1';
       env.PYTHONDONTWRITEBYTECODE = '1'; // precompiled at build time; never write into the (signed) bundle
       // apps opened from Finder/Dock get PATH=/usr/bin:/bin:… — add MacTeX (LaTeX for Tex) and Homebrew
-      if (process.platform === 'darwin') env.PATH += ['/Library/TeX/texbin', '/opt/homebrew/bin', '/usr/local/bin'].map((d) => path.delimiter + d).join('');
+      if (process.platform === 'darwin') env[PK] += ['/Library/TeX/texbin', '/opt/homebrew/bin', '/usr/local/bin'].map((d) => path.delimiter + d).join('');
+      if (softwareGL && MESA_DIR && fs.existsSync(path.join(MESA_DIR, 'opengl32.dll'))) {
+        env.GLCONTEXT_WIN_LIBGL = path.join(MESA_DIR, 'opengl32.dll'); // read by glcontext (moderngl)
+        env.GALLIUM_DRIVER = 'llvmpipe';
+        env[PK] = `${MESA_DIR}${path.delimiter}${env[PK]}`; // where Mesa's opengl32.dll finds libgallium_wgl.dll
+      }
       delete env.PYTHONHOME;
       delete env.PYTHONPATH;
       const model = path.join(RES, 'models', 'bge-small-en-v1.5');
@@ -71,8 +91,10 @@ function startEngine() {
     engine = proc;
     let buf = '';
     let resolved = false;
+    let glFailed = false;
     proc.stdout.on('data', (d) => {
       buf += d.toString();
+      if (/GLFAIL/.test(buf)) glFailed = true;
       const m = buf.match(/READY (\d+)/);
       if (m && !resolved) {
         resolved = true;
@@ -87,7 +109,16 @@ function startEngine() {
     });
     proc.on('exit', (code) => {
       engine = null;
-      if (!resolved) reject(new Error(`Engine exited before it was ready (code ${code}).`));
+      if (!resolved && glFailed && !softwareGL && MESA_DIR && fs.existsSync(path.join(MESA_DIR, 'opengl32.dll')) && !quitting) {
+        console.error('[main] no usable OpenGL driver: restarting the engine on software rendering (Mesa llvmpipe)');
+        softwareGL = true;
+        startEngine().then(resolve, reject);
+        return;
+      }
+      if (!resolved) {
+        const why = glFailed ? ` OpenGL 3.3 is not available: ${(buf.match(/GLFAIL ([^\n]*)/) || [])[1] || ''}. Update the graphics driver.` : '';
+        reject(new Error(`Engine exited before it was ready (code ${code}).${why}`));
+      }
       if (!quitting && restarts < 5) {
         restarts += 1;
         console.error(`[main] engine exited (${code}), restarting…`);
@@ -1238,9 +1269,12 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
 
 // ------------------------------------------------------------------ updates
 // New versions are GitHub Releases of the repo named in package.json "repository", published by
-// .github/workflows/release.yml. An AppImage downloads the new AppImage (only the changed blocks
-// when it can) and replaces itself; any other install (.deb, Mac for now) is only told that a new
-// version exists, with a link to the download page; running from source there is nothing to do.
+// .github/workflows/release.yml (+ scripts/release-mac.sh for the Mac files). Installs that can
+// update themselves download only the changed blocks when they can:
+//   AppImage → replaces itself · Windows (NSIS, per user) → runs the new installer silently ·
+//   Mac (signed + notarized release build) → Squirrel swaps the .app from the zip.
+// Any other install (.deb, a Mac build made locally with the non-commercial library) is only told
+// that a new version exists, with a link to the download page; from source there is nothing to do.
 // MATHSTUDIO_UPDATE_URL points the updater at a plain folder of release files instead (tests);
 // MATHSTUDIO_UPDATE_MODE forces install|notify|source, MATHSTUDIO_UPDATE_CACHE names the download
 // cache folder, MATHSTUDIO_UPDATE_DELAY_MS sets the first background check (default 10 s).
@@ -1260,7 +1294,23 @@ function updateMode() {
   if (!app.isPackaged && !UPDATE_URL) return 'source';
   if (!UPDATE_URL && !REPO) return 'source';
   if (process.platform === 'linux' && process.env.APPIMAGE) return 'install';
+  if (WIN && app.isPackaged) return 'install';
+  // packaging/mac/build.sh marks builds that carry the non-commercial library (local installs
+  // only): updating would swap them for the public build
+  if (process.platform === 'darwin' && app.isPackaged && !PKG.mathstudioLocalBuild) return 'install';
   return 'notify';
+}
+
+/** The electron-updater class that can install on this system; checking works with any of them
+ *  (the feed file — latest-linux.yml / latest-mac.yml / latest.yml — follows process.platform). */
+function updaterClass() {
+  const eu = require('electron-updater');
+  if (updateMode() === 'install') {
+    if (process.env.APPIMAGE) return eu.AppImageUpdater; // (tests fake an AppImage on any OS)
+    if (WIN) return eu.NsisUpdater;
+    if (process.platform === 'darwin') return eu.MacUpdater;
+  }
+  return eu.AppImageUpdater;
 }
 
 let updater = null;
@@ -1300,8 +1350,8 @@ function notesText(notes) {
 
 function getUpdater() {
   if (updater) return updater;
-  const { AppImageUpdater } = require('electron-updater');
-  const u = new AppImageUpdater();
+  const Updater = updaterClass();
+  const u = new Updater();
   // Our own config file only names the download cache; the feed comes from setFeedURL below, so
   // nothing depends on the app-update.yml electron-builder may or may not have written.
   const cfg = path.join(app.getPath('userData'), 'updater.yml');
@@ -1356,7 +1406,10 @@ function friendlyUpdateError(e) {
   if (/HttpError: 404|Cannot find latest|No published versions|Unable to find latest version/i.test(msg)) return 'No published release found yet.';
   const http = msg.match(/(?:HttpError: |^)([45]\d\d)\b/);
   if (http) return `The update server answered with an error (HTTP ${http[1]}). Try again later.`;
-  if (/EACCES|EPERM|read-only/i.test(msg)) return `MathStudio cannot replace its own file (${msg.split('\n')[0]}). Move the AppImage to a folder you can write to, or download the new version by hand.`;
+  if (/EACCES|EPERM|read-only/i.test(msg)) {
+    const where = process.env.APPIMAGE ? 'Move the AppImage to a folder you can write to' : process.platform === 'darwin' ? 'Move MathStudio to the Applications folder' : 'Reinstall MathStudio';
+    return `MathStudio cannot replace its own files (${msg.split('\n')[0]}). ${where}, or download the new version by hand.`;
+  }
   return msg.split('\n')[0].slice(0, 300);
 }
 

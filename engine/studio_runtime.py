@@ -80,6 +80,8 @@ def _latex_hint() -> str:
     import sys
     if sys.platform == "darwin":
         return "install MacTeX (or BasicTeX + `sudo tlmgr install dvisvgm`)"
+    if sys.platform == "win32":
+        return "install MiKTeX (miktex.org) and let it install missing packages on the fly"
     return "on Ubuntu/Debian: sudo apt install texlive-latex-extra texlive-science dvisvgm"
 
 
@@ -90,15 +92,22 @@ try:
     import shutil as _shutil
     from manimlib.utils import tex_file_writing as _tfw
 
+    _TEX_DIRS = ["/Library/TeX/texbin", *sorted(_glob.glob("/usr/local/texlive/*/bin/*"), reverse=True)]
+    if os.name == "nt":  # MiKTeX (per user / all users), TeX Live
+        _TEX_DIRS = [os.path.join(os.environ.get(v, ""), *sub) for v, sub in (
+            ("LOCALAPPDATA", ("Programs", "MiKTeX", "miktex", "bin", "x64")),
+            ("ProgramFiles", ("MiKTeX", "miktex", "bin", "x64")))] + sorted(_glob.glob("C:/texlive/*/bin/windows"), reverse=True)
+
     def _find_tex_bin(name):
         found = _shutil.which(name)
         if found:
             return found
         # GUI launches don't always inherit the shell PATH that a TeX install extends
-        for d in ["/Library/TeX/texbin", *sorted(_glob.glob("/usr/local/texlive/*/bin/*"), reverse=True)]:
-            if os.path.isfile(os.path.join(d, name)):
+        for d in _TEX_DIRS:
+            found = _shutil.which(name, path=d)  # (adds .exe on Windows)
+            if found:
                 os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
-                return os.path.join(d, name)
+                return found
         return None
 
     _full_tex_to_svg = _tfw.full_tex_to_svg

@@ -328,8 +328,52 @@ server.submit(2, lambda r: order.append("late-bg"))
 threading.Timer(0.03, lambda: server.submit(0, lambda r: order.append("frame2"))).start()
 server.run_job(R, server.next_job())
 check(order[-1] == "frame2", f"a frame submitted while background waits goes first ({order[-2:]})")
+
 server.run_job(R, server.next_job())
 check(order[-1] == "late-bg" and server._jobs.empty(), "the waiting background job still runs")
+
+# job watchdog: an endless job is interrupted — SIGALRM on POSIX, a watcher thread on Windows
+# (no SIGALRM there; MATHSTUDIO_WATCHDOG=thread forces that path here too)
+import signal  # noqa: E402
+
+
+def endless(r):
+    n = 0
+    while True:
+        n += 1
+
+
+for mode in (["signal"] if hasattr(signal, "setitimer") else []) + ["thread"]:
+    os.environ["MATHSTUDIO_WATCHDOG"] = mode
+    wd = server._Watchdog(0.4)
+    check(wd.use_signal == (mode == "signal"), f"watchdog uses {mode}")
+    fut = server.submit(2, endless)
+    t0 = time.perf_counter()
+    wd.arm()
+    try:
+        server.run_job(R, server.next_job())
+    finally:
+        wd.disarm()
+    took = time.perf_counter() - t0
+    err = fut.exception(timeout=1)
+    check(isinstance(err, server.JobTimeout) and "longer than" in str(err) and took < 3,
+          f"{mode} watchdog stops an endless job ({type(err).__name__}: {err}, {took:.2f}s)")
+    # a quick job disarms in time: nothing fires afterwards
+    fut = server.submit(2, lambda r: "quick")
+    wd.arm()
+    try:
+        server.run_job(R, server.next_job())
+    finally:
+        wd.disarm()
+    try:
+        time.sleep(0.7)
+        late = None
+    except server.JobTimeout as e:
+        late = e
+    check(fut.result(timeout=1) == "quick" and late is None, f"{mode} watchdog stays quiet after a quick job ({late})")
+os.environ.pop("MATHSTUDIO_WATCHDOG", None)
+if hasattr(signal, "setitimer"):
+    signal.signal(signal.SIGALRM, signal.SIG_DFL)
 
 # a filmstrip interrupted by live frames comes out identical (each step restores its GL state)
 strip_clip = {**dyn, "duration": 2.0}

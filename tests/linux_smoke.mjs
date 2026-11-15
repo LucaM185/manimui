@@ -1,5 +1,8 @@
 // Smoke test for a packaged build — Linux (run inside packaging/linux/test.sh's container, under Xvfb):
 //   MS_APP=/opt/MathStudio/mathstudio node tests/linux_smoke.mjs
+// Windows (packaging/windows/test.sh, after a silent install; MS_EXPECT_SOFTWARE_GL=1 on GPU-less
+// runners = the engine must have fallen back to the bundled Mesa by itself):
+//   MS_APP=%LOCALAPPDATA%\Programs\MathStudio\MathStudio.exe node tests/linux_smoke.mjs
 // or macOS (launched with Finder's minimal PATH; afterwards the bundle's signature must still verify):
 //   MS_APP=release/mac-arm64/MathStudio.app/Contents/MacOS/MathStudio node tests/linux_smoke.mjs
 // Engine boots from the bundled Python, library thumbnails render, GL renderer detected, Auto picks
@@ -37,6 +40,7 @@ const post = (p, body) => win.evaluate(async ([port, p, body]) => (await fetch(`
 await win.waitForFunction(() => !!window.__ms.store.getState().gl, null, { timeout: 60000 });
 const gl = await win.evaluate(() => window.__ms.store.getState().gl);
 check(!!gl.renderer, `GL renderer: ${gl.renderer} (${gl.version}), software=${gl.software}`);
+if (process.env.MS_EXPECT_SOFTWARE_GL) check(gl.software && /llvmpipe/i.test(gl.renderer), `no GPU driver → software GL (Mesa llvmpipe): ${gl.renderer}`);
 if (gl.software) check((await win.evaluate(() => window.__ms.store.getState().renderQuality)) === 'auto', 'quality defaults to Auto (→ Low on software GL)');
 
 // library thumbnails
@@ -82,13 +86,14 @@ const size = fs.existsSync(outFile) ? fs.statSync(outFile).size : 0;
 check(st.status === 'done' && size > 2000, `mp4 export done (${st.status}, ${size} bytes, ${el()})${st.status !== 'done' ? '\n' + String(st.log || '').slice(-1200) : ''}`);
 
 // LaTeX item without a TeX install: error must say what to install
-const hasLatex = ['/usr/bin/latex', '/Library/TeX/texbin/latex'].some((f) => fs.existsSync(f));
+const hasLatex = ['/usr/bin/latex', '/Library/TeX/texbin/latex', path.join(process.env.LOCALAPPDATA || '-', 'Programs', 'MiKTeX', 'miktex', 'bin', 'x64', 'latex.exe'),
+  path.join(process.env.ProgramFiles || '-', 'MiKTeX', 'miktex', 'bin', 'x64', 'latex.exe')].some((f) => fs.existsSync(f));
 const tid = await win.evaluate(() => window.__ms.actions.addItem('tex', { time: 0 }));
 await win.waitForFunction((id) => { const m = window.__ms.store.getState().meta; return m && (m.errors?.[id] || m.clips?.[id]); }, tid, { timeout: 120000 }).catch(() => {});
 await win.waitForTimeout(1000);
 const terr = await win.evaluate((id) => window.__ms.store.getState().meta?.errors?.[id] || '', tid);
 if (hasLatex) check(!terr, 'Equation renders with the system LaTeX');
-else check(/LaTeX/i.test(terr) && /apt|install/i.test(terr), `Equation without LaTeX explains the fix: "${terr.slice(0, 160)}"`);
+else check(/LaTeX/i.test(terr) && /apt|MiKTeX|install/i.test(terr), `Equation without LaTeX explains the fix: "${terr.slice(0, 160)}"`);
 
 // settings tab
 await win.click('[data-testid=right-tab-settings]');

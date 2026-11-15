@@ -1,5 +1,6 @@
 // Settings → Updates: current version, "Check for updates", download progress, "Restart to update".
-// An AppImage replaces itself; other installs get a link to the releases page (see main.cjs).
+// AppImage, Windows and Mac release builds install updates themselves; other installs get a link
+// to the releases page (see updateMode in main.cjs).
 import { useState } from 'react';
 import { Check, Download, ExternalLink, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { formatBytes, timeAgo, useUpdate } from '../updates';
@@ -28,7 +29,7 @@ export default function UpdatesSection() {
         </div>
 
         {s?.mode === 'source' ? (
-          <p className="hint" data-testid="update-source">Running from source: update with <code>git pull</code>. Installed builds (AppImage) update themselves from here.</p>
+          <p className="hint" data-testid="update-source">Running from source: update with <code>git pull</code>. Installed builds (Windows, Mac, AppImage) update themselves from here.</p>
         ) : (
           <>
             <div className="upd-status" data-testid="update-status" data-state={state}>

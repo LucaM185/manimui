@@ -63,6 +63,16 @@ THUMB_DIR = os.path.join(DATA_DIR, "thumbs")
 for d in (DATA_DIR, ASSET_DIR, THUMB_DIR):
     os.makedirs(d, exist_ok=True)
 
+if os.name == "nt" and os.environ.get("GLCONTEXT_WIN_LIBGL"):
+    # Software OpenGL (Mesa, set by main.cjs when there's no GPU driver): glcontext loads Mesa's
+    # opengl32.dll by full path, but that DLL imports libgallium_wgl.dll by name, which Windows
+    # would look for next to python.exe. Loaded first by full path, the import binds to it.
+    try:
+        import ctypes
+        ctypes.WinDLL(os.path.join(os.path.dirname(os.environ["GLCONTEXT_WIN_LIBGL"]), "libgallium_wgl.dll"))
+    except OSError as e:
+        print("[engine] Mesa preload failed:", e, file=sys.stderr, flush=True)
+
 import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -739,7 +749,12 @@ def write_export_dir(project, out_dir):
     lib, link = os.path.join(HERE, "mathstudio_library"), os.path.join(out_dir, "mathstudio_library")
     if os.path.isdir(lib) and not os.path.lexists(link):
         try:
-            os.symlink(lib, link)
+            if os.name == "nt":
+                # symlinks need admin rights / developer mode on Windows; a directory junction doesn't
+                import _winapi
+                _winapi.CreateJunction(lib, link)
+            else:
+                os.symlink(lib, link)
         except OSError as e:
             log("library link failed", e)
     assets = collect_assets(project)
@@ -1112,8 +1127,84 @@ PARTS_CACHE: dict = {}
 JOB_TIMEOUT = float(os.environ.get("MATHSTUDIO_JOB_TIMEOUT", "20"))
 
 
+class JobTimeout(Exception):
+    def __init__(self, msg=None):  # the Windows watchdog raises the bare class
+        super().__init__(msg or f"render took longer than {_Watchdog.limit:g}s (infinite loop in custom code?)")
+
+
+class _Watchdog:
+    """Raises JobTimeout in the main thread when a job runs longer than its limit.
+
+    POSIX: SIGALRM (setitimer). Windows has neither, so a watcher thread injects the exception with
+    PyThreadState_SetAsyncExc instead; like the signal, it lands at the next Python bytecode (a long
+    C call such as a big numpy op finishes first). MATHSTUDIO_WATCHDOG=thread forces that path."""
+
+    limit = JOB_TIMEOUT
+
+    def __init__(self, seconds):
+        import signal
+        self.seconds = _Watchdog.limit = seconds
+        self.use_signal = hasattr(signal, "setitimer") and os.environ.get("MATHSTUDIO_WATCHDOG") != "thread"
+        if self.use_signal:
+            signal.signal(signal.SIGALRM, self._raise)
+        else:
+            import ctypes
+            self._set_async = ctypes.pythonapi.PyThreadState_SetAsyncExc
+            self._set_async.argtypes = (ctypes.c_ulong, ctypes.py_object)
+            self._main = threading.main_thread().ident
+            self._cv = threading.Condition()
+            self._deadline = None
+            self._gen = 0
+            threading.Thread(target=self._watch, daemon=True, name="job-watchdog").start()
+
+    def _raise(self, signum=None, frame=None):
+        raise JobTimeout()
+
+    def _watch(self):
+        with self._cv:
+            while True:
+                if self._deadline is None:
+                    self._cv.wait()
+                    continue
+                left = self._deadline - time.monotonic()
+                if left > 0:
+                    self._cv.wait(left)
+                    continue
+                gen, self._deadline = self._gen, None
+                # disarm() may run between the check and here: the generation tells
+                if gen == self._gen:
+                    self._set_async(self._main, JobTimeout)
+
+    def arm(self):
+        if self.use_signal:
+            import signal
+            signal.setitimer(signal.ITIMER_REAL, self.seconds)
+            return
+        with self._cv:
+            self._gen += 1
+            self._deadline = time.monotonic() + self.seconds
+            self._cv.notify()
+
+    def disarm(self):
+        if self.use_signal:
+            import signal
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            return
+        with self._cv:
+            self._gen += 1
+            self._deadline = None
+            self._cv.notify()
+
+
 def main():
-    renderer = Renderer()
+    try:
+        renderer = Renderer()
+    except Exception as e:
+        # no usable OpenGL 3.3 (Windows VM / remote desktop without a GPU driver): main.cjs restarts
+        # the engine on the bundled software renderer (Mesa llvmpipe) when it sees this
+        print(f"GLFAIL {type(e).__name__}: {e}", flush=True)
+        log("OpenGL context failed:", type(e).__name__, e)
+        sys.exit(3)
     # ~200k long-lived objects (manimlib, numpy, the library) exist by now; every full (gen-2)
     # collection used to walk them all — 60-170 ms stalls in the middle of preview frames.
     # Freezing them leaves only the scene's own objects to scan. Nothing scene-related exists
@@ -1143,24 +1234,20 @@ def main():
     print(f"READY {port}", flush=True)
     log(f"listening on {port}, data={DATA_DIR}")
 
-    import signal
-
-    class JobTimeout(Exception):
-        pass
-
-    def on_alarm(signum, frame):
-        raise JobTimeout(f"render took longer than {JOB_TIMEOUT:.0f}s (infinite loop in custom code?)")
-
-    signal.signal(signal.SIGALRM, on_alarm)
+    watchdog = _Watchdog(JOB_TIMEOUT)
 
     while True:
         job = next_job()
-        signal.setitimer(signal.ITIMER_REAL, JOB_TIMEOUT)
+        cont = None
         try:
-            cont = run_job(renderer, job)
-        finally:
-            signal.setitimer(signal.ITIMER_REAL, 0)
-            renderer.collect_gl()
+            watchdog.arm()
+            try:
+                cont = run_job(renderer, job)
+            finally:
+                watchdog.disarm()
+        except Exception as e:  # a timeout that landed just after the job had finished
+            log("job epilogue:", type(e).__name__, e)
+        renderer.collect_gl()
         if cont is not None:
             _jobs.put(cont)
 

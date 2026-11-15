@@ -1,0 +1,46 @@
+# Windows x64 build (NSIS installer). Run via packaging/windows/build.sh (on Windows: GitHub's
+# windows-latest runner in .github/workflows/release.yml), which stages the Python bundle in
+# build-res-win/ first.
+appId: app.mathstudio.ide
+productName: MathStudio
+copyright: MathStudio
+directories:
+  output: release
+  buildResources: packaging
+files:
+  - electron/**/*
+  - dist/**/*
+  - packaging/icon.png
+  - package.json
+# never ship the developer's .env (API key): the app reads keys from Settings
+extraResources:
+  - from: build-res-win/engine
+    to: engine
+  - from: build-res-win/python
+    to: python
+  - from: build-res-win/models
+    to: models
+  # Mesa llvmpipe: software OpenGL, used only when the PC has no OpenGL 3.3 driver (see main.cjs)
+  - from: build-res-win/mesa
+    to: mesa
+# Updates: GitHub Releases of package.json "repository"; this only makes electron-builder write
+# latest.yml (+ the installer's .blockmap for differential downloads). CI uploads the files.
+publish:
+  - provider: github
+win:
+  target:
+    - target: nsis
+      arch: x64
+  icon: packaging/icon.png
+  # Not code-signed (no certificate): SmartScreen shows "Windows protected your PC" → More info →
+  # Run anyway. The updater checks the sha512 in latest.yml, not a signature.
+  signAndEditExecutable: true
+# Per-user install (no admin prompt) into %LOCALAPPDATA%\Programs\MathStudio, so the in-app updater
+# can run the next installer silently. Versionless name: the website links to
+# github.com/<owner>/<repo>/releases/latest/download/MathStudio-Setup.exe
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: MathStudio-Setup.exe
+  shortcutName: MathStudio
+  deleteAppDataOnUninstall: false
