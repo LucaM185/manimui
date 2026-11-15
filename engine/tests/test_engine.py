@@ -2,6 +2,7 @@
 Engine stress tests.  Run:   engine/.venv/bin/python engine/tests/test_engine.py [--export]
 """
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -753,8 +754,13 @@ if DO_EXPORT:
     check(st["status"] == "done", f"export failed: {st['status']}\n{st['log'][-2000:]}")
     if st["status"] == "done":
         print(f"   exported in {time.time() - t0:.1f}s")
-        n = subprocess.run(["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries",
-                            "stream=nb_read_frames", "-of", "csv=p=0", out], capture_output=True, text=True).stdout.strip()
+        import shutil
+        if shutil.which("ffprobe"):
+            n = subprocess.run(["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries",
+                                "stream=nb_read_frames", "-of", "csv=p=0", out], capture_output=True, text=True).stdout.strip()
+        else:  # only ffmpeg (the app bundles no ffprobe; Windows CI): count by decoding
+            log_ = subprocess.run(["ffmpeg", "-i", out, "-map", "0:v:0", "-f", "null", "-"], capture_output=True, text=True).stderr
+            n = (re.findall(r"frame=\s*(\d+)", log_) or ["?"])[-1]
         check(n == "45", f"expected 45 frames, got {n}")
         for fi in (5, 20, 33):
             raw = subprocess.run(["ffmpeg", "-v", "error", "-i", out, "-vf", f"select=eq(n\\,{fi})", "-vframes", "1",
