@@ -144,8 +144,11 @@ jobs:
           7z x -y -bso0 "$RUNNER_TEMP/tinytex.exe" -o"$RUNNER_TEMP"
           TT="$RUNNER_TEMP/TinyTeX/bin/windows"
           "$TT/tlmgr.bat" update --self   # the repository is newer than the frozen release's tlmgr
-          "$TT/tlmgr.bat" install dvisvgm amsfonts babel-english doublestroke setspace tipa relsize jknapltx rsfs \
-            calligra wasysym ragged2e physics xcolor microtype psnfss ec standalone xkeyval currfile filehook preview
+          # roughly what the Linux test image gets from apt (texlive-latex-extra + science), plus
+          # the extras of ManimGL's preamble
+          "$TT/tlmgr.bat" install collection-latexrecommended collection-fontsrecommended collection-mathscience \
+            dvisvgm standalone preview doublestroke setspace tipa relsize jknapltx rsfs calligra wasy wasysym \
+            ragged2e physics xkeyval currfile filehook
           cygpath -w "$TT" >> "$GITHUB_PATH"
           "$TT/latex.exe" --version | sed -n 1p; "$TT/dvisvgm.exe" --version
 
