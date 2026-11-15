@@ -145,7 +145,7 @@ jobs:
           TT="$RUNNER_TEMP/TinyTeX/bin/windows"
           "$TT/tlmgr.bat" update --self   # the repository is newer than the frozen release's tlmgr
           "$TT/tlmgr.bat" install dvisvgm amsfonts babel-english doublestroke setspace tipa relsize jknapltx rsfs \
-            calligra wasysym ragged2e physics xcolor microtype psnfss ec
+            calligra wasysym ragged2e physics xcolor microtype psnfss ec standalone xkeyval currfile filehook preview
           cygpath -w "$TT" >> "$GITHUB_PATH"
           "$TT/latex.exe" --version | sed -n 1p; "$TT/dvisvgm.exe" --version
 
