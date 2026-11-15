@@ -29,18 +29,24 @@ export default function ContextMenu({ x, y, items, onClose }: { x: number; y: nu
 
   useEffect(() => {
     const onClose = () => onCloseRef.current();
-    const close = (e: MouseEvent) => {
+    const close = (e: Event) => {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    // deferred so the click that opened the menu doesn't close it; the timer must be cleared too,
-    // or a re-run before it fires leaks a listener that later closes newer menus on mousedown
-    const t = setTimeout(() => window.addEventListener('mousedown', close), 0);
+    const blur = () => onClose();
+    // pointerdown in the capture phase: timeline drags preventDefault their pointerdown (which
+    // suppresses the compat mousedown) and stopPropagation it, so a bubbling mousedown listener
+    // never heard clicks on lanes/clips and the menu stayed open.
+    // Deferred so the click that opened the menu doesn't close it; the timer must be cleared too,
+    // or a re-run before it fires leaks a listener that later closes newer menus.
+    const t = setTimeout(() => window.addEventListener('pointerdown', close, true), 0);
     window.addEventListener('keydown', esc);
+    window.addEventListener('blur', blur);
     return () => {
       clearTimeout(t);
-      window.removeEventListener('mousedown', close);
+      window.removeEventListener('pointerdown', close, true);
       window.removeEventListener('keydown', esc);
+      window.removeEventListener('blur', blur);
     };
   }, []);
 

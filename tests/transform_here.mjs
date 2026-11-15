@@ -190,6 +190,38 @@ await win.keyboard.press('Escape');
 await win.waitForTimeout(100);
 check(!(await win.$('.ctx-menu')), 'Escape closes the menu');
 
+// clicking anywhere outside closes it — including timeline lanes/clips, whose drag handlers
+// preventDefault + stopPropagation their pointerdown (that used to leave the menu stuck open)
+const outsideClicks = [
+  ['an empty lane', async () => timelinePoint(5, 1)],
+  ['a clip', async () => timelinePoint(1, A)],
+  ['the preview', async () => { const b = await stageBox(); return { x: b.x + b.width * 0.8, y: b.y + b.height * 0.8 }; }],
+  ['the inspector', async () => { const b = await win.locator('.inspector').first().boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height - 20 }; }],
+];
+for (const [where, at] of outsideClicks) {
+  pt = await timelinePoint(6, 1);
+  await win.mouse.click(pt.x, pt.y, { button: 'right' });
+  await win.waitForSelector('.ctx-menu', { timeout: 3000 });
+  await win.waitForTimeout(50);
+  const c = await at();
+  await win.mouse.click(c.x, c.y);
+  await win.waitForTimeout(100);
+  check(!(await win.$('.ctx-menu')), `clicking ${where} closes the menu`);
+}
+// right-clicking elsewhere swaps in the new menu rather than stacking/leaving the old one
+pt = await timelinePoint(6, 1);
+await win.mouse.click(pt.x, pt.y, { button: 'right' });
+await win.waitForSelector('.ctx-menu', { timeout: 3000 });
+await win.waitForTimeout(50);
+pt = await timelinePoint(2, A);
+await win.mouse.click(pt.x, pt.y, { button: 'right' });
+await win.waitForTimeout(150);
+const menus = await S(() => [...document.querySelectorAll('.ctx-menu:not(.sub)')].map((m) => m.innerText.split('\n')[0]));
+check(menus.length === 1 && /Add transform here/.test(menus[0]), `right-click elsewhere replaces the menu (${JSON.stringify(menus)})`);
+await win.keyboard.press('Escape');
+await win.waitForTimeout(100);
+await S(() => window.__ms.store.setState({ selection: [] }));
+
 // ------------------------------------------------------------------ inside the enter animation / T key
 console.log('\n▶ T shortcut + clamping');
 await S((id) => window.__ms.store.getState().commit((p) => { const c = p.clips.find((c) => c.id === id); c.enter = { type: 'ShowCreation', duration: 1, rate: 'smooth' }; }), A);
