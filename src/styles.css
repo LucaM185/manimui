@@ -1114,8 +1114,8 @@ h5 .anim-name { font-size: 11px; font-weight: 500; color: var(--muted); text-tra
 .rot-reset { width: 18px; height: 16px; padding: 0; display: grid; place-items: center; border-radius: 4px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
 .rot-reset:hover:not(:disabled) { background: var(--raised); color: var(--text); }
 .rot-reset:disabled { opacity: .3; cursor: default; }
-.rot-rings { display: flex; gap: 4px; }
-.rot-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.rot-body { display: flex; align-items: center; gap: 6px; }
+.rot-vals { display: flex; flex-direction: column; gap: 4px; }
 .rot-ring { display: block; overflow: visible; }
 .rot-axis-line { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 2 2.5; opacity: .45; }
 .rot-band { stroke-width: .7; stroke-linejoin: round; }
@@ -1132,11 +1132,11 @@ h5 .anim-name { font-size: 11px; font-weight: 500; color: var(--muted); text-tra
 .rot-arrow:active .rot-arrow-shape { filter: brightness(.82); }
 .rot-arrow:focus-visible .rot-arrow-shape { stroke: #fff; stroke-width: 1.4; }
 .rot-arrow-edge { pointer-events: none; filter: brightness(.55); }
-.rot-val { width: 76px; height: 20px; display: flex; align-items: center; gap: 5px; padding: 0 6px; border-radius: 5px; background: rgba(255,255,255,.05); cursor: ew-resize; font-family: var(--mono); font-size: 11px; }
+.rot-val { width: 70px; height: 20px; display: flex; align-items: center; gap: 5px; padding: 0 6px; border-radius: 5px; background: rgba(255,255,255,.05); cursor: ew-resize; font-family: var(--mono); font-size: 11px; }
 .rot-val:hover { background: rgba(255,255,255,.09); }
 .rot-axis { color: var(--axis); font-weight: 700; }
 .rot-num { flex: 1; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
-.stage:has(.rot-gizmo) .stage-errors { right: 298px; }
+.stage:has(.rot-gizmo) .stage-errors { right: 230px; }
 
 /* ------------------------------------------------------------- depth handle (⊙ toward you / ⊗ into the screen) */
 .depth-handle .depth-pill { fill: rgba(15, 16, 20, .82); stroke: color-mix(in srgb, var(--axis) 55%, transparent); stroke-width: 1.2; cursor: ns-resize; }

@@ -9,14 +9,14 @@ import { add, basis, dot, mul, orientMatrix, sub, turnWorld, type Axis, type Ori
 /**
  * 3D rotation widget, bottom-right of the stage while rotatable clips are selected.
  *
- * Three rings, one per world axis (colours match the view cube), drawn in 3D from the viewer's
- * current point of view, each around a small card that shows the clip's orientation. Every ring
+ * One gimbal: three rings, one per world axis (colours match the view cube), drawn in 3D from the
+ * viewer's current point of view around a small card that shows the clip's orientation. Every ring
  * carries two ribbon arrows on the side facing the viewer; an arrow points the way the near side of
  * the clip will move, whatever the camera angle:
  *   click = 15° that way (Shift 90°, Alt 1°), hold = keep turning.
  * Arrows turn the clip about the world axis through its centre, so what happens on the stage is
  * exactly what the arrow shows (on an already tilted clip that changes more than one of the
- * Inspector's angles). The chips below are those angles (Rot X / Rot Y / Rotation) at the playhead:
+ * Inspector's angles). The chips beside it are those angles (Rot X / Rot Y / Rotation) at the playhead:
  * drag = scrub that one angle, double-click = 0. With keyframes, edits go to (or create) the key at
  * the playhead like every other stage edit.
  */
@@ -189,19 +189,20 @@ export default function RotateGizmo({ view }: { view: Cam }) {
         <span title={many ? `Turns all ${ids.length} selected clips, each about its own centre` : 'Click an arrow: the side of the clip facing you moves the way the arrow points'}>Rotate{many ? ` · ${ids.length}` : ''}</span>
         <button className="rot-reset" disabled={!turned && !many} onClick={() => setAll({ rotation: 0, rx: 0, ry: 0 })} title="Reset all rotations to 0°" data-testid="rot-reset"><Undo2 size={11} /></button>
       </div>
-      <div className="rot-rings">
-        {AXES.map((spec) => (
-          <div className="rot-cell" key={spec.axis} style={{ ['--axis' as any]: spec.base }}>
-            <Ring
-              view={view}
-              o={cur}
-              spec={spec}
-              onDown={(e, sign) => onArrowDown(e, spec.axis, sign)}
-              onKey={(e, sign) => onArrowKey(e, spec.axis, sign)}
-              onUp={stop}
-            />
+      <div className="rot-body">
+        <Rings
+          view={view}
+          o={cur}
+          onDown={(e, axis, sign) => onArrowDown(e, axis, sign)}
+          onKey={(e, axis, sign) => onArrowKey(e, axis, sign)}
+          onUp={stop}
+        />
+        <div className="rot-vals">
+          {AXES.map((spec) => (
             <div
+              key={spec.axis}
               className="rot-val"
+              style={{ ['--axis' as any]: spec.base }}
               data-testid={`rot-${spec.axis}-val`}
               title={`${spec.label === 'Z' ? 'Rotation' : `Rot ${spec.label}`} (as in the Inspector): drag to change just this angle (Shift = 15° steps) · double-click for 0°`}
               onPointerDown={(e) => onValueDown(e, spec.field)}
@@ -210,59 +211,124 @@ export default function RotateGizmo({ view }: { view: Cam }) {
               <span className="rot-axis">{spec.label}</span>
               <span className="rot-num">{fmt(cur[spec.field])}</span>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------- one ring
-const S = 88, C = S / 2, R = 30; // svg size, centre, ring radius (px)
-const HB = 5.2, HH = 10.6;       // ribbon / arrowhead half-width
-const A_GAP = 9, A_BODY = 50, A_TIP = 76; // arrow: degrees along the ring from the point facing the viewer
+// ---------------------------------------------------------------- the rings
+const S = 124, C = S / 2, R = 44; // svg size, centre, ring radius (px)
+const HB = 5.2, HH = 10.6;        // ribbon / arrowhead half-width
+const A_GAP = 10, A_BODY = 44, A_TIP = 66; // arrow: degrees along the ring from the point facing the viewer
 const BIAS = 0.3;
 
 type P2 = { x: number; y: number };
 const path = (q: P2[]) => `M${q.map((p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join('L')}Z`;
+type Quad = { d: string; z: number; axis: Axis; near: boolean };
 
 /**
- * The ring about one world axis as seen from `view`: a ribbon band (a cone section tilted so that
- * its near part faces the viewer: a flat strip when the ring is edge-on, an annulus when face-on),
- * with the two arrows starting back to back at the point of the ring nearest the viewer.
+ * One gimbal as seen from `view`: a card showing the clip's orientation inside three rings, one
+ * about each world axis. Each ring is a ribbon band (a cone section tilted so that its near part
+ * faces the viewer: a flat strip when the ring is edge-on, an annulus when face-on), with two
+ * arrows starting back to back at the point of the ring nearest the viewer. Bands are painted far
+ * to near (the card between their back and near halves), arrows last, nearest on top.
  */
-function Ring({ view, o, spec, onDown, onKey, onUp }: {
-  view: Cam; o: Orient; spec: Spec;
-  onDown: (e: React.PointerEvent, sign: number) => void;
-  onKey: (e: React.KeyboardEvent, sign: number) => void;
+function Rings({ view, o, onDown, onKey, onUp }: {
+  view: Cam; o: Orient;
+  onDown: (e: React.PointerEvent, axis: Axis, sign: number) => void;
+  onKey: (e: React.KeyboardEvent, axis: Axis, sign: number) => void;
   onUp: () => void;
 }) {
   const { right, up, out } = basis(view);
-  const { a, u, v, axis } = spec;
-  const ao = dot(a, out), cr = Math.sqrt(Math.max(0, 1 - ao * ao));
-  const rad = (f: number): V3 => add(mul(u, Math.cos(f)), mul(v, Math.sin(f)));
-  /** Point of the ribbon at ring angle f, s px across it. */
-  const pt = (f: number, s: number): V3 => {
-    const r = rad(f);
-    return add(mul(r, R), mul(add(mul(a, cr), mul(r, -ao)), s));
-  };
   const px = (p: V3): P2 => ({ x: C + dot(p, right), y: C - dot(p, up) });
 
-  // where the arrows sit: the ring point nearest the viewer; a face-on ring has none, so the more
-  // face-on it is, the more they lean towards the top (bottom for the Y ring) of the screen, which
-  // keeps them steady while orbiting
-  const flat = (d: V3) => sub(d, mul(a, dot(d, a)));
-  const front = add(flat(out), mul(flat(up), BIAS * spec.bias * Math.abs(ao)));
-  const f0 = Math.atan2(dot(front, v), dot(front, u));
+  const quads: Quad[] = [];
+  const arrows: { z: number; el: React.ReactElement }[] = [];
+  for (const spec of AXES) {
+    const { a, u, v, axis } = spec;
+    const ao = dot(a, out), cr = Math.sqrt(Math.max(0, 1 - ao * ao));
+    const rad = (f: number): V3 => add(mul(u, Math.cos(f)), mul(v, Math.sin(f)));
+    /** Point of the ribbon at ring angle f, s px across it. */
+    const pt = (f: number, s: number): V3 => {
+      const r = rad(f);
+      return add(mul(r, R), mul(add(mul(a, cr), mul(r, -ao)), s));
+    };
 
-  // the band, as quads: far half first
-  const N = 48;
-  const back: string[] = [], near: string[] = [];
-  for (let i = 0; i < N; i++) {
-    const f1 = (i / N) * 2 * Math.PI, f2 = ((i + 1) / N) * 2 * Math.PI;
-    const q = path([px(pt(f1, HB)), px(pt(f2, HB)), px(pt(f2, -HB)), px(pt(f1, -HB))]);
-    (cr > 0.06 && dot(rad((f1 + f2) / 2), out) < 0 ? back : near).push(q);
+    // where the arrows sit: the ring point nearest the viewer; a face-on ring has none, so the more
+    // face-on it is, the more they lean towards the top (bottom for the Y ring) of the screen, which
+    // keeps them steady while orbiting
+    const flat = (d: V3) => sub(d, mul(a, dot(d, a)));
+    const front = add(flat(out), mul(flat(up), BIAS * spec.bias * Math.abs(ao)));
+    const f0 = Math.atan2(dot(front, v), dot(front, u));
+
+    const N = 48;
+    for (let i = 0; i < N; i++) {
+      const f1 = (i / N) * 2 * Math.PI, f2 = ((i + 1) / N) * 2 * Math.PI, fm = (f1 + f2) / 2;
+      quads.push({
+        d: path([px(pt(f1, HB)), px(pt(f2, HB)), px(pt(f2, -HB)), px(pt(f1, -HB))]),
+        z: dot(rad(fm), out),
+        axis,
+        near: !(cr > 0.06 && dot(rad(fm), out) < 0),
+      });
+    }
+
+    for (const sign of [1, -1]) {
+      const at = (d: number) => f0 + sign * d * DEG;
+      const n = 8;
+      const top: P2[] = [], bot: P2[] = [];
+      for (let i = 0; i <= n; i++) {
+        const f = at(A_GAP + ((A_BODY - A_GAP) * i) / n);
+        top.push(px(pt(f, HB)));
+        bot.push(px(pt(f, -HB)));
+      }
+      const tail = px(pt(at(A_GAP), 0)), tip = px(pt(at(A_TIP), 0)), mid = px(pt(at((A_GAP + A_BODY) / 2 + 6), 0));
+      const d = path([...top, px(pt(at(A_BODY), HH)), tip, px(pt(at(A_BODY), -HH)), ...bot.reverse()]);
+      // the way the arrow sets off (where the near side of the clip goes), for tests
+      const go = px(pt(at(A_GAP + 10), 0));
+      const len = Math.hypot(go.x - tail.x, go.y - tail.y) || 1;
+      const id = `rot-grad-${axis}-${sign > 0 ? 'p' : 'n'}`;
+      const name = sign > 0 ? 'pos' : 'neg';
+      arrows.push({
+        z: dot(rad(at((A_GAP + A_BODY) / 2)), out),
+        el: (
+          <g
+            key={`${axis}-${name}`}
+            className="rot-arrow"
+            style={{ ['--axis' as any]: spec.base }}
+            role="button"
+            tabIndex={0}
+            aria-label={`Turn 15° about ${spec.label}, ${sign > 0 ? 'counter-clockwise' : 'clockwise'} seen from +${spec.label}`}
+            data-testid={`rot-${axis}-${name}`}
+            data-mid={`${mid.x.toFixed(1)},${mid.y.toFixed(1)}`}
+            data-dir={`${((go.x - tail.x) / len).toFixed(4)},${((go.y - tail.y) / len).toFixed(4)}`}
+            onPointerDown={(e) => onDown(e, axis, sign)}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
+            onKeyDown={(e) => onKey(e, axis, sign)}
+          >
+            <title>{`Turn 15° this way (about ${spec.label}): the side facing you follows the arrow · Shift 90° · Alt 1° · hold to keep turning`}</title>
+            <defs>
+              <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={tail.x} y1={tail.y} x2={tip.x} y2={tip.y}>
+                <stop offset="0" stopColor={spec.dark} />
+                <stop offset="0.6" stopColor={spec.base} />
+                <stop offset="1" stopColor={spec.light} />
+              </linearGradient>
+            </defs>
+            <path d={d} className="rot-arrow-hit" />
+            <path d={d} className="rot-arrow-edge" fill={spec.dark} transform="translate(0 1.8)" />
+            <path d={d} className="rot-arrow-shape" fill={`url(#${id})`} />
+          </g>
+        ),
+      });
+    }
   }
+  quads.sort((p, q) => p.z - q.z);
+  arrows.sort((p, q) => p.z - q.z);
+  const band = (q: Quad, i: number) => (
+    <path key={i} d={q.d} className={`rot-band ${q.near ? 'near' : 'back'}`} style={{ ['--axis' as any]: AXES.find((s) => s.axis === q.axis)!.base }} />
+  );
 
   // the clip, as a card (notch = its top edge; tint = front / back)
   const m = orientMatrix(o);
@@ -271,63 +337,18 @@ function Ring({ view, o, spec, onDown, onKey, onUp }: {
   const card = ([[-1, -0.65, 0], [1, -0.65, 0], [1, 0.65, 0], [-1, 0.65, 0]] as V3[]).map((p) => px(mul(turnP(p), k)));
   const notch = ([[-0.28, 0.65, 0], [0.28, 0.65, 0], [0, 1.02, 0]] as V3[]).map((p) => px(mul(turnP(p), k)));
   const facing = dot(turnP([0, 0, 1]), out);
-  const ax0 = px(mul(a, -R * 1.32)), ax1 = px(mul(a, R * 1.32));
-
-  const arrow = (sign: number) => {
-    const at = (d: number) => f0 + sign * d * DEG;
-    const n = 8;
-    const top: P2[] = [], bot: P2[] = [];
-    for (let i = 0; i <= n; i++) {
-      const f = at(A_GAP + ((A_BODY - A_GAP) * i) / n);
-      top.push(px(pt(f, HB)));
-      bot.push(px(pt(f, -HB)));
-    }
-    const tail = px(pt(at(A_GAP), 0)), tip = px(pt(at(A_TIP), 0)), mid = px(pt(at((A_GAP + A_BODY) / 2 + 6), 0));
-    const d = path([...top, px(pt(at(A_BODY), HH)), tip, px(pt(at(A_BODY), -HH)), ...bot.reverse()]);
-    // the way the arrow sets off (where the near side of the clip goes), for tests
-    const go = px(pt(at(A_GAP + 10), 0));
-    const len = Math.hypot(go.x - tail.x, go.y - tail.y) || 1;
-    const id = `rot-grad-${axis}-${sign > 0 ? 'p' : 'n'}`;
-    const name = sign > 0 ? 'pos' : 'neg';
-    return (
-      <g
-        key={name}
-        className="rot-arrow"
-        role="button"
-        tabIndex={0}
-        aria-label={`Turn 15° about ${spec.label}, ${sign > 0 ? 'counter-clockwise' : 'clockwise'} seen from +${spec.label}`}
-        data-testid={`rot-${axis}-${name}`}
-        data-mid={`${mid.x.toFixed(1)},${mid.y.toFixed(1)}`}
-        data-dir={`${((go.x - tail.x) / len).toFixed(4)},${((go.y - tail.y) / len).toFixed(4)}`}
-        onPointerDown={(e) => onDown(e, sign)}
-        onPointerUp={onUp}
-        onPointerCancel={onUp}
-        onKeyDown={(e) => onKey(e, sign)}
-      >
-        <title>{`Turn 15° this way (about ${spec.label}): the side facing you follows the arrow · Shift 90° · Alt 1° · hold to keep turning`}</title>
-        <defs>
-          <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={tail.x} y1={tail.y} x2={tip.x} y2={tip.y}>
-            <stop offset="0" stopColor={spec.dark} />
-            <stop offset="0.6" stopColor={spec.base} />
-            <stop offset="1" stopColor={spec.light} />
-          </linearGradient>
-        </defs>
-        <path d={d} className="rot-arrow-hit" />
-        <path d={d} className="rot-arrow-edge" fill={spec.dark} transform="translate(0 1.8)" />
-        <path d={d} className="rot-arrow-shape" fill={`url(#${id})`} />
-      </g>
-    );
-  };
 
   return (
-    <svg className="rot-ring" width={S} height={S} viewBox={`0 0 ${S} ${S}`} data-testid={`rot-ring-${axis}`} data-facing={facing >= 0 ? 'front' : 'back'}>
-      <line x1={ax0.x} y1={ax0.y} x2={ax1.x} y2={ax1.y} className="rot-axis-line" />
-      <path d={back.join('')} className="rot-band back" />
+    <svg className="rot-ring" width={S} height={S} viewBox={`0 0 ${S} ${S}`} data-testid="rot-ring" data-facing={facing >= 0 ? 'front' : 'back'}>
+      {AXES.map((spec) => {
+        const p0 = px(mul(spec.a, -R * 1.3)), p1 = px(mul(spec.a, R * 1.3));
+        return <line key={spec.axis} x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} className="rot-axis-line" style={{ ['--axis' as any]: spec.base }} />;
+      })}
+      {quads.filter((q) => !q.near).map(band)}
       <polygon points={card.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} className={`rot-card ${facing >= 0 ? 'front' : 'back'}`} />
       <polygon points={notch.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} className="rot-notch" />
-      <path d={near.join('')} className="rot-band near" />
-      {arrow(1)}
-      {arrow(-1)}
+      {quads.filter((q) => q.near).map(band)}
+      {arrows.map((a) => a.el)}
     </svg>
   );
 }

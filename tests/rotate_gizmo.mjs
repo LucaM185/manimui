@@ -41,8 +41,16 @@ const arrow = async (axis, name) => {
   const el = win.locator(`[data-testid="rot-${axis}-${name}"]`);
   const mid = (await el.getAttribute('data-mid')).split(',').map(Number);
   const dir = (await el.getAttribute('data-dir')).split(',').map(Number);
-  const box = await win.locator(`[data-testid="rot-ring-${axis}"]`).boundingBox();
+  const box = await win.locator('[data-testid="rot-ring"]').boundingBox();
   return { x: box.x + mid[0], y: box.y + mid[1], dir };
+};
+// every arrow's click point lands on that arrow (the rings share one gimbal, so nothing may cover it)
+const arrowsReachable = async (label) => {
+  for (const ax of ['x', 'y', 'z']) for (const name of ['pos', 'neg']) {
+    const a = await arrow(ax, name);
+    const hit = await S(([x, y]) => document.elementFromPoint(x, y)?.closest('.rot-arrow')?.getAttribute('data-testid') || null, [a.x, a.y]);
+    check(hit === `rot-${ax}-${name}`, `${label}: ${ax.toUpperCase()} ${name} arrow is clickable at its mid point (hit ${hit})`);
+  }
 };
 const clickArrow = async (axis, name, mod) => {
   const a = await arrow(axis, name);
@@ -103,6 +111,8 @@ await win.screenshot({ path: path.join(OUT, '1_selected.png') });
 
 console.log('2. six arrows, 15° about the world axes');
 check(await win.locator('.rot-arrow').count() === 6, 'three rings carry six arrows');
+check(await win.locator('.rot-ring').count() === 1, 'all three rings share one gimbal');
+await arrowsReachable('front view');
 const past0 = await S(() => window.__ms.store.getState().past.length);
 await clickArrow('x', 'pos');
 let t = await tr(cid);
@@ -175,6 +185,7 @@ await S(() => window.__ms.store.setState({ editorView: { x: 0, y: 0, z: 0, zoom:
 await settle();
 const dirs34 = {};
 for (const ax of ['x', 'y', 'z']) dirs34[ax] = (await arrow(ax, 'pos')).dir;
+await arrowsReachable('3/4 view');
 check(['x', 'y', 'z'].some((ax) => Math.hypot(dirs34[ax][0] - dirsFront[ax][0], dirs34[ax][1] - dirsFront[ax][1]) > 0.15), `arrows are redrawn for the 3/4 view (${JSON.stringify(dirs34)})`);
 for (const [axis, which] of [['x', 'red'], ['y', 'red'], ['z', 'green']]) for (const name of ['pos', 'neg']) await follows('3/4 view', axis, name, which, 0.5);
 await win.screenshot({ path: path.join(OUT, '2c_three_quarter.png') });
@@ -182,6 +193,7 @@ await win.screenshot({ path: path.join(OUT, '2c_three_quarter.png') });
 for (const [label, ev] of [['top', { theta: 180, phi: 90, gamma: 180 }], ['back', { theta: 180, phi: 0.001, gamma: 0 }]]) {
   await S((ev) => window.__ms.store.setState({ editorView: { x: 0, y: 0, z: 0, zoom: 0.8, ...ev } }), ev);
   await settle();
+  await arrowsReachable(`${label} view`);
   await win.screenshot({ path: path.join(OUT, `2d_${label}.png`) });
 }
 await S(() => window.__ms.store.setState({ editorView: null }));
