@@ -110,7 +110,34 @@ try:
                 return found
         return None
 
-    _full_tex_to_svg = _tfw.full_tex_to_svg
+    import tempfile as _tempfile
+
+    def _full_tex_to_svg(full_tex, compiler="latex", message=""):
+        """ManimGL's full_tex_to_svg, made portable: it passed TeX an absolute temp path
+        (C:\\Users\\RUNNER~1\\…\\working.tex on Windows — backslashes and ~ on TeX's command line)
+        and "-no-pdf" to every compiler; this runs inside the temp folder on relative names, and
+        a failure says why (the log's "! …" lines, else the end of LaTeX's output)."""
+        if compiler not in ("latex", "xelatex"):
+            raise NotImplementedError(f"Compiler '{compiler}' is not implemented")
+        dvi = "working.dvi" if compiler == "latex" else "working.xdv"
+        with _tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "working.tex"), "w", encoding="utf-8") as f:
+                f.write(full_tex)
+            args = [_find_tex_bin(compiler), *(["-no-pdf"] if compiler == "xelatex" else []),
+                    "-interaction=batchmode", "-halt-on-error", "working.tex"]
+            p = _sp.run(args, cwd=d, capture_output=True, text=True, errors="replace")
+            if p.returncode != 0 or not os.path.exists(os.path.join(d, dvi)):
+                err = ""
+                log_file = os.path.join(d, "working.log")
+                if os.path.exists(log_file):
+                    with open(log_file, encoding="utf-8", errors="replace") as f:
+                        m = _re.search(r"(?<=\n! ).*\n.*\n", f.read())
+                    err = m.group().strip() if m else ""
+                if not err:
+                    err = " ".join((p.stdout + p.stderr).split()[-60:]) or f"exit code {p.returncode}"
+                raise _tfw.LatexError(err)
+            p = _sp.run([_find_tex_bin("dvisvgm"), dvi, "-n", "-v", "0", "--stdout"], cwd=d, capture_output=True)
+            return p.stdout.decode("utf-8")
 
     def _checked_full_tex_to_svg(full_tex, compiler="latex", message=""):
         missing = [b for b in (compiler, "dvisvgm") if not _find_tex_bin(b)]
