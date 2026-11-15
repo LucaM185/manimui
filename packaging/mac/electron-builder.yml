@@ -37,7 +37,15 @@ mac:
   # build.sh already signed every Mach-O in these trees; the rest is data (.py/.pyc, fonts, models)
   signIgnore:
     - /Contents/Resources/(python|engine|models)/
+  # release files (build.sh --release): versionless, so the website can link to
+  # github.com/<owner>/<repo>/releases/latest/download/MathStudio-arm64.dmg
+  artifactName: ${productName}-${arch}-mac.${ext}
   extendInfo:
     NSDocumentsFolderUsageDescription: MathStudio saves your projects in Documents/MathStudio.
     NSDesktopFolderUsageDescription: MathStudio opens and saves projects and exports you keep on the Desktop.
     NSDownloadsFolderUsageDescription: MathStudio opens and saves projects and exports you keep in Downloads.
+dmg:
+  artifactName: ${productName}-${arch}.${ext}
+  sign: true
+  # the dmg is notarized + stapled afterwards by build.sh
+  writeUpdateInfo: false

@@ -133,6 +133,31 @@ jobs:
         timeout-minutes: 60
         run: packaging/windows/build.sh
 
+      # LaTeX for the Tex/Equation checks (the Linux test image has TeX Live from apt): the
+      # packages of ManimGL's default preamble — the engine drops any \usepackage that's missing
+      - uses: teatimeguest/setup-texlive-action@v3
+        with:
+          cache: true
+          packages: |
+            scheme-basic
+            dvisvgm
+            amsfonts
+            babel-english
+            doublestroke
+            setspace
+            tipa
+            relsize
+            jknapltx
+            rsfs
+            calligra
+            wasysym
+            ragged2e
+            physics
+            xcolor
+            microtype
+            psnfss
+            ec
+
       - name: Install it and drive the installed app
         timeout-minutes: 60
         run: packaging/windows/test.sh

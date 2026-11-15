@@ -66,7 +66,8 @@ const frameW = async (win, { min = 0, max = Infinity } = {}) => {
   await win.waitForFunction(() => /saved in Settings/.test(document.querySelector('[data-testid=settings-key-state]')?.textContent || ''));
   const stored = JSON.parse(fs.readFileSync(SETTINGS, 'utf8'));
   check(stored.openrouterKey === GOOD, 'key written to settings.json');
-  check((fs.statSync(SETTINGS).mode & 0o077) === 0, 'settings.json is owner-only (0600)');
+  // (POSIX modes mean nothing on Windows: there the file is private by its place in the user profile)
+  if (process.platform !== 'win32') check((fs.statSync(SETTINGS).mode & 0o077) === 0, 'settings.json is owner-only (0600)');
   const shown = await win.textContent('[data-testid=settings-key-state]');
   check(!shown.includes(GOOD) && shown.includes('sk-or-') && shown.includes('cdef'), `key shown masked (${shown.trim()})`);
   check(await win.inputValue('[data-testid=settings-key-input]') === '', 'input cleared after save');

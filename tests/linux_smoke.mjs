@@ -86,8 +86,10 @@ const size = fs.existsSync(outFile) ? fs.statSync(outFile).size : 0;
 check(st.status === 'done' && size > 2000, `mp4 export done (${st.status}, ${size} bytes, ${el()})${st.status !== 'done' ? '\n' + String(st.log || '').slice(-1200) : ''}`);
 
 // LaTeX item without a TeX install: error must say what to install
+const { spawnSync } = await import('child_process');
 const hasLatex = ['/usr/bin/latex', '/Library/TeX/texbin/latex', path.join(process.env.LOCALAPPDATA || '-', 'Programs', 'MiKTeX', 'miktex', 'bin', 'x64', 'latex.exe'),
-  path.join(process.env.ProgramFiles || '-', 'MiKTeX', 'miktex', 'bin', 'x64', 'latex.exe')].some((f) => fs.existsSync(f));
+  path.join(process.env.ProgramFiles || '-', 'MiKTeX', 'miktex', 'bin', 'x64', 'latex.exe')].some((f) => fs.existsSync(f))
+  || (!MAC && spawnSync('latex', ['--version'], { encoding: 'utf8' }).status === 0); // on PATH (TeX Live in Windows CI)
 const tid = await win.evaluate(() => window.__ms.actions.addItem('tex', { time: 0 }));
 await win.waitForFunction((id) => { const m = window.__ms.store.getState().meta; return m && (m.errors?.[id] || m.clips?.[id]); }, tid, { timeout: 120000 }).catch(() => {});
 await win.waitForTimeout(1000);

@@ -4,13 +4,18 @@ Drag mobjects onto a live preview, arrange them on a video-editor timeline, and 
 `manimgl`. Everything you do is turned into a real ManimGL script, which you can see and
 edit.
 
-## Download (Linux x86_64)
+## Download
 
-[**Download the AppImage**](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-x86_64.AppImage)
-· [.deb](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-amd64.deb)
-· [all releases](https://github.com/LucaM185/mathstudio/releases)
+* **Windows** (x64): [MathStudio-Setup.exe](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-Setup.exe)
+  — installs for your user, no admin rights. It isn't code-signed yet, so SmartScreen may say
+  "Windows protected your PC": *More info → Run anyway*.
+* **Mac** (Apple Silicon): [MathStudio-arm64.dmg](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-arm64.dmg)
+  — signed and notarized; drag it to Applications.
+* **Linux** (x86_64): [AppImage](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-x86_64.AppImage)
+  · [.deb](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-amd64.deb)
 
-The AppImage updates itself (Settings → Updates); the .deb tells you when a new version is out.
+[All releases](https://github.com/LucaM185/mathstudio/releases). Windows, Mac and AppImage installs
+update themselves (Settings → Updates); the .deb tells you when a new version is out.
 
 ## Run from source
 
@@ -56,6 +61,36 @@ not bundled: `Tex`/Equation mobjects need `sudo apt install texlive-latex-extra 
 * AppImage: `chmod +x MathStudio-x86_64.AppImage && ./MathStudio-x86_64.AppImage` (needs `libfuse2`, or run
   with `--appimage-extract-and-run`). It runs with Chromium's sandbox off, because AppImages can't
   ship the setuid helper and Ubuntu 24.04 blocks the namespace sandbox for them.
+
+## Windows build (x64)
+
+```bash
+npm run dist:win   # on Windows (Git Bash): → release/MathStudio-Setup.exe (+ .blockmap), release/latest.yml
+npm run test:win   # installs it silently and drives the installed app
+```
+
+Built and tested on GitHub's `windows-latest` runner by the release workflow (there is no Docker
+route like Linux's). Same bundle as Linux — Python 3.12 with the pinned engine packages
+(`packaging/linux/constraints.txt`), static ffmpeg, the search model — plus the VC++ runtime DLLs
+and Mesa's software OpenGL (llvmpipe): when a PC has no OpenGL 3.3 driver (VMs, remote desktop)
+the engine says so and is restarted on Mesa automatically (`MATHSTUDIO_SOFTWARE_GL=1` forces it).
+The runners have no GPU, so CI exercises exactly that path. LaTeX: install MiKTeX. Not code-signed
+(no certificate), so the installer shows SmartScreen's unknown-publisher warning.
+
+## Mac release (Apple Silicon)
+
+```bash
+npm run install:mac   # this Mac's own build (incl. the non-commercial library) → /Applications
+npm run release:mac   # public build, notarized → dmg + update zip, uploaded to the current tag's release
+```
+
+`packaging/mac/build.sh --release` signs with the Developer ID certificate in the keychain and
+notarizes with a `notarytool` keychain profile (`MS_NOTARY_PROFILE`, default `feather`;
+`xcrun notarytool store-credentials <name>` creates one), so no Apple credentials live in the repo
+or on GitHub. Notarizing/stapling runs in a temp folder because `stapler` can't write under
+~/Desktop. Local builds with the non-commercial library are marked, so their updater only links to
+the download page instead of replacing them with the public build. `tests/mac_update.mjs` updates a
+release build to a newer one through Squirrel (see the file for the two builds it needs).
 
 ## How it works
 
@@ -118,20 +153,28 @@ the timeline.
 ## Releases and updates
 
 ```bash
-npm run release              # patch bump (or: minor | major); add --no-mac to skip the local Mac build, --dry to only check
+npm run release              # patch bump (or: minor | major); --no-mac: release without Mac files,
+                             # --no-install: don't reinstall this Mac's app, --dry: only check
 ```
 
-`scripts/release.sh` checks (on main, clean tree, up to date, typecheck), bumps the version, tags
-vX.Y.Z and pushes — then builds the signed Mac app and installs it in /Applications.
+`scripts/release.sh` checks (on main, clean tree, up to date, typecheck, signing certificate, gh
+login), bumps the version, tags vX.Y.Z, pushes and creates the **draft** release; then builds the
+Mac release files here (`release:mac`) and installs this Mac's own build in /Applications.
 
-`.github/workflows/release.yml` builds the Linux packages, tests them in a clean Ubuntu container
-(including a real AppImage self-update), then publishes a GitHub Release with the AppImage, the
-.deb and `latest-linux.yml`. *Run workflow* by hand does a dry run (build + tests, no release).
+`.github/workflows/release.yml` builds the Linux packages (tested in a clean Ubuntu container,
+including a real AppImage self-update) and the Windows installer (silently installed and driven on
+Windows, including a real self-update), then uploads them to the draft. `scripts/release-upload.sh`
+publishes the release once it has every platform's update feed (`latest-linux.yml`, `latest.yml`,
+`latest-mac.yml`) — whichever upload comes last — so no updater ever sees a half-uploaded release.
+If the Mac step fails (e.g. an expired Apple agreement), fix it and run `npm run release:mac`, or
+publish without it: `scripts/release-upload.sh vX.Y.Z --publish`. *Run workflow* by hand does a
+dry run (build + tests, no release; all platforms or just one). Files go to GitHub Releases only.
 
 In the app, **Settings → Updates** checks that release feed (also in the background at launch and
-every 6 h; can be turned off). An AppImage downloads only the changed blocks of the new AppImage,
-replaces itself and restarts (or installs when you quit); the project is saved first. A .deb install
-gets a link to the download page. Running from source shows a `git pull` hint. The feed is the repo
+every 6 h; can be turned off). Updates download only the changed blocks when they can, and the
+project is saved first: an AppImage replaces itself, Windows runs the new installer silently, a Mac
+release build is swapped by Squirrel (from the zip) — each then restarts. A .deb install (or a
+local Mac build) gets a link to the download page. Running from source shows a `git pull` hint. The feed is the repo
 in `package.json` → `repository`. `npm run test:updates` covers the panel against a fake server.
 
 ## Tests

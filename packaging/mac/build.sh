@@ -4,10 +4,23 @@
 # certificate in the keychain.
 #   packaging/mac/build.sh             → release/mac-arm64/MathStudio.app
 #   packaging/mac/build.sh --install   … and replace /Applications/MathStudio.app with it
+#   packaging/mac/build.sh --release   public build, notarized + stapled → release/mac/:
+#       MathStudio-arm64.dmg (download), MathStudio-arm64-mac.zip + .blockmap (in-app updates),
+#       latest-mac.yml (update feed). Upload with scripts/release-mac.sh.
 # LaTeX is not bundled: the app uses MacTeX from /Library/TeX/texbin if it is installed.
 # The non-commercial library content (gitignored) is included only for this machine's own install;
-# MS_PUBLIC=1 leaves it out — required for anything that gets distributed.
+# MS_PUBLIC=1 (implied by --release) leaves it out — required for anything that gets distributed.
+# Builds with that content are marked (package.json mathstudioLocalBuild) so the in-app updater
+# only points at the download page instead of replacing them with the public build.
+# Notarization uses a notarytool keychain profile (MS_NOTARY_PROFILE, default "feather"; create one
+# with `xcrun notarytool store-credentials <name>`): the Apple credentials stay in the keychain.
+# MS_NOTARIZE=0 skips notarization (local tests only — release-mac.sh refuses such builds).
+# MS_VERSION=x.y.z builds that version number instead of package.json's, MS_MAC_OUT=<dir> puts the
+# release files there instead of release/mac (update tests: tests/mac_update.mjs).
 set -euo pipefail
+MODE="${1:-}"
+case "$MODE" in ""|--install|--release) ;; *) echo "usage: build.sh [--install|--release]"; exit 2 ;; esac
+[ "$MODE" = --release ] && export MS_PUBLIC=1
 cd "$(dirname "$0")/../.."
 ROOT="$PWD"
 STAGE="$ROOT/build-res-mac"
@@ -75,12 +88,71 @@ rm "$STAGE/macho.txt"
 echo "▸ UI + app"
 npx vite build >/dev/null
 rm -rf release/mac-arm64
-CSC_NAME="${IDENTITY#Developer ID Application: }" npx electron-builder --config packaging/mac/electron-builder.yml --mac dir --arm64 --publish never
+EB_ARGS=()
+[ "${MS_PUBLIC:-}" = 1 ] || EB_ARGS+=(-c.extraMetadata.mathstudioLocalBuild=true)
+[ -n "${MS_VERSION:-}" ] && EB_ARGS+=("-c.extraMetadata.version=$MS_VERSION")
+export CSC_NAME="${IDENTITY#Developer ID Application: }"
+npx electron-builder --config packaging/mac/electron-builder.yml --mac dir --arm64 --publish never ${EB_ARGS[@]+"${EB_ARGS[@]}"}
 APP="release/mac-arm64/MathStudio.app"
 codesign --verify --deep --strict "$APP" && echo "  signature ok: $(codesign -dvv "$APP" 2>&1 | grep '^Authority=' | head -1)"
 du -sh "$APP"
 
-if [ "${1:-}" = "--install" ]; then
+if [ "$MODE" = --release ]; then
+  V="$(node -p "require('./package.json').version")"; V="${MS_VERSION:-$V}"
+  # stapler can't write under ~/Desktop (TCC), where this repo may live: notarize, staple and
+  # package in a temp folder, then copy the results back
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/mathstudio-release.XXXXXX")"
+  trap 'rm -rf "$WORK"' EXIT
+  PROFILE="${MS_NOTARY_PROFILE:-feather}"
+  notarize() {  # $1 = file to submit (.zip / .dmg)
+    echo "  submitting $(basename "$1") ($(du -h "$1" | cut -f1)) to Apple's notary service…"
+    local out id status
+    out="$(xcrun notarytool submit "$1" --keychain-profile "$PROFILE" --wait --timeout 2h --output-format json)" || {
+      echo "$out"; echo "✗ notarytool failed (an expired Apple Developer agreement shows as HTTP 403: accept it at developer.apple.com/account)"; exit 1; }
+    id="$(node -e 'const j=JSON.parse(process.argv[1]);console.log(j.id||"")' "$out")"
+    status="$(node -e 'const j=JSON.parse(process.argv[1]);console.log(j.status||"")' "$out")"
+    if [ "$status" != Accepted ]; then
+      echo "✗ notarization $status ($id)"; xcrun notarytool log "$id" --keychain-profile "$PROFILE" 2>&1 | head -60; exit 1
+    fi
+    echo "  ✓ notarized ($id)"
+  }
+  staple() {  # stapling right after acceptance sometimes fails until the ticket propagates
+    for attempt in 1 2 3 4 5; do
+      xcrun stapler staple -q "$1" && xcrun stapler validate -q "$1" && return 0
+      [ "$attempt" = 5 ] && { echo "✗ stapling $1 failed"; exit 1; }
+      echo "  ⟳ ticket not ready, retrying in 30 s…"; sleep 30
+    done
+  }
+  echo "▸ notarizing the app"
+  ditto "$APP" "$WORK/MathStudio.app"
+  if [ "${MS_NOTARIZE:-1}" = 0 ]; then
+    echo "  (skipped: MS_NOTARIZE=0 — not for distribution)"
+  else
+    ditto -c -k --keepParent "$WORK/MathStudio.app" "$WORK/submit.zip"
+    notarize "$WORK/submit.zip"; rm "$WORK/submit.zip"
+    staple "$WORK/MathStudio.app"
+    spctl -a -t exec -vv "$WORK/MathStudio.app" 2>&1 | sed 's/^/  /'
+  fi
+  echo "▸ dmg + zip"
+  # --prepackaged: package the stapled app as is (electron-builder does not sign it again)
+  npx electron-builder --config packaging/mac/electron-builder.yml --prepackaged "$WORK/MathStudio.app" \
+    --mac dmg zip --arm64 --publish never -c.directories.output="$WORK/out" "-c.extraMetadata.version=$V" >/dev/null
+  DMG="$WORK/out/MathStudio-arm64.dmg"
+  if [ "${MS_NOTARIZE:-1}" != 0 ]; then
+    echo "▸ notarizing the dmg"
+    notarize "$DMG"
+    staple "$DMG"
+  fi
+  # stapling changed the dmg: refresh its size + sha512 in latest-mac.yml (the zip is what updates use)
+  node packaging/mac/finish-latest.cjs "$WORK/out/latest-mac.yml" "$WORK/out"
+  OUTDIR="${MS_MAC_OUT:-release/mac}"
+  rm -rf "$OUTDIR" && mkdir -p "$OUTDIR"
+  cp "$DMG" "$WORK/out/MathStudio-arm64-mac.zip" "$WORK/out/MathStudio-arm64-mac.zip.blockmap" "$WORK/out/latest-mac.yml" "$OUTDIR/"
+  [ "${MS_NOTARIZE:-1}" = 0 ] && touch "$OUTDIR/NOT-NOTARIZED"
+  ls -lh "$OUTDIR"
+fi
+
+if [ "$MODE" = "--install" ]; then
   echo "▸ installing to /Applications"
   osascript -e 'tell application "MathStudio" to quit' >/dev/null 2>&1 || true
   rm -rf /Applications/MathStudio.app
