@@ -10,10 +10,20 @@ export MS_OUT="$OUT" PYTHONUNBUFFERED=1 PYTHONFAULTHANDLER=1
 fail=0; failed=()
 
 echo "== silent install"
-powershell -NoProfile -Command "Start-Process -Wait -FilePath 'release\\MathStudio-Setup.exe' -ArgumentList '/S'" || { echo "installer failed"; exit 1; }
+T0=$SECONDS
+CODE=$(powershell -NoProfile -Command "\$p = Start-Process -Wait -PassThru -FilePath '$(cygpath -w "$PWD/release/MathStudio-Setup.exe")' -ArgumentList '/S'; \$p.ExitCode" | tr -d '\r')
+echo "   installer exit code $CODE after $((SECONDS - T0)) s"
 INSTALL="$(cygpath -u "$LOCALAPPDATA")/Programs/MathStudio"
 APP="$INSTALL/MathStudio.exe"
-[ -f "$APP" ] || { echo "✗ $APP missing after install"; ls -la "$INSTALL" 2>&1 | head; exit 1; }
+# (the installer may hand over to a child process: give the files a moment to appear)
+for i in $(seq 1 60); do [ -f "$APP" ] && break; sleep 5; done
+if [ ! -f "$APP" ]; then
+  echo "✗ $APP missing after install"
+  ls -la "$(cygpath -u "$LOCALAPPDATA")/Programs" 2>&1
+  powershell -NoProfile -Command "Get-ChildItem HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall, HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { \$_.DisplayName -like '*MathStudio*' } | Format-List DisplayName, InstallLocation, UninstallString"
+  find /c/Users/runneradmin/AppData "/c/Program Files" -maxdepth 4 -iname 'MathStudio*' 2>/dev/null
+  exit 1
+fi
 RES="$INSTALL/resources"
 echo "   ✓ installed: $(du -sh "$INSTALL" | cut -f1) in $(cygpath -w "$INSTALL")"
 
