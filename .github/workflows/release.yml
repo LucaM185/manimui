@@ -143,6 +143,7 @@ jobs:
           echo "36c329c644683d981a668419d13c8804696e2816ae4d287ad755788fee231a31  $RUNNER_TEMP/tinytex.exe" | sha256sum -c -
           7z x -y -bso0 "$RUNNER_TEMP/tinytex.exe" -o"$RUNNER_TEMP"
           TT="$RUNNER_TEMP/TinyTeX/bin/windows"
+          "$TT/tlmgr.bat" update --self   # the repository is newer than the frozen release's tlmgr
           "$TT/tlmgr.bat" install dvisvgm amsfonts babel-english doublestroke setspace tipa relsize jknapltx rsfs \
             calligra wasysym ragged2e physics xcolor microtype psnfss ec
           cygpath -w "$TT" >> "$GITHUB_PATH"
