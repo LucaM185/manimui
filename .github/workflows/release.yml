@@ -133,30 +133,20 @@ jobs:
         timeout-minutes: 60
         run: packaging/windows/build.sh
 
-      # LaTeX for the Tex/Equation checks (the Linux test image has TeX Live from apt): the
-      # packages of ManimGL's default preamble — the engine drops any \usepackage that's missing
-      - uses: teatimeguest/setup-texlive-action@v3
-        with:
-          cache: true
-          packages: |
-            scheme-basic
-            dvisvgm
-            amsfonts
-            babel-english
-            doublestroke
-            setspace
-            tipa
-            relsize
-            jknapltx
-            rsfs
-            calligra
-            wasysym
-            ragged2e
-            physics
-            xcolor
-            microtype
-            psnfss
-            ec
+      # LaTeX for the Tex/Equation checks (the Linux test image has TeX Live from apt): TinyTeX
+      # (a small TeX Live, pinned + checksummed) + the packages of ManimGL's default preamble —
+      # the engine drops any \usepackage that's still missing
+      - name: Install LaTeX (TinyTeX)
+        timeout-minutes: 20
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/tinytex.exe" https://github.com/rstudio/tinytex-releases/releases/download/v2026.10/TinyTeX-1-windows-v2026.10.exe
+          echo "36c329c644683d981a668419d13c8804696e2816ae4d287ad755788fee231a31  $RUNNER_TEMP/tinytex.exe" | sha256sum -c -
+          7z x -y -bso0 "$RUNNER_TEMP/tinytex.exe" -o"$RUNNER_TEMP"
+          TT="$RUNNER_TEMP/TinyTeX/bin/windows"
+          "$TT/tlmgr.bat" install dvisvgm amsfonts babel-english doublestroke setspace tipa relsize jknapltx rsfs \
+            calligra wasysym ragged2e physics xcolor microtype psnfss ec
+          cygpath -w "$TT" >> "$GITHUB_PATH"
+          "$TT/latex.exe" --version | sed -n 1p; "$TT/dvisvgm.exe" --version
 
       - name: Install it and drive the installed app
         timeout-minutes: 60
