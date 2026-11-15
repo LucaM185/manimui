@@ -18,7 +18,7 @@ MESA_SHA256=351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695
 echo "▸ staging Python"
 rm -rf "$STAGE" && mkdir -p "$STAGE"
 uv python install "$PYV" --install-dir "$STAGE/.uvpy" >/dev/null
-cp -a "$(ls -d "$STAGE"/.uvpy/cpython-"$PYV".*-windows-x86_64-none | head -1)" "$STAGE/python"
+cp -a "$(ls -d "$STAGE"/.uvpy/cpython-"$PYV".*-windows-x86_64-none | sed -n 1p)" "$STAGE/python"
 rm -rf "$STAGE/.uvpy"
 PY="$STAGE/python/python.exe"
 rm -f "$STAGE"/python/Lib/EXTERNALLY-MANAGED
@@ -38,7 +38,7 @@ echo "▸ ffmpeg"
 uv pip install --quiet --python "$PY" --target "$STAGE/ffm" imageio-ffmpeg==0.6.0
 cp "$STAGE"/ffm/imageio_ffmpeg/binaries/ffmpeg-win*.exe "$STAGE/python/ffmpeg.exe"
 rm -rf "$STAGE/ffm"
-"$STAGE/python/ffmpeg.exe" -version | head -1
+"$STAGE/python/ffmpeg.exe" -version | sed -n 1p
 
 echo "▸ Mesa $MESA_VER (software OpenGL fallback)"
 mkdir -p "$STAGE/.mesa" "$STAGE/mesa"
@@ -70,10 +70,11 @@ find "$STAGE/python" -name '*.pyc' -delete
 
 # Windows' classic 260-character path limit: the install prefix
 # (C:\Users\<name>\AppData\Local\Programs\MathStudio\resources\) takes ~70-90 of them
-LONGEST=$(cd "$STAGE" && find . -type f | awk '{ print length($0) - 2 }' | sort -rn | head -1)
+# (no `| head` anywhere here: with pipefail, the writer's SIGPIPE fails the script)
+LONGEST=$(cd "$STAGE" && find . -type f | awk '{ l = length($0) - 2; if (l > m) m = l } END { print m + 0 }')
 echo "  longest path inside resources: $LONGEST chars"
 if [ "$LONGEST" -gt 165 ]; then
-  (cd "$STAGE" && find . -type f | awk 'length($0) > 167' | head -10)
+  (cd "$STAGE" && find . -type f | awk 'length($0) > 167 && n++ < 10')
   echo "✗ paths too long for a default Windows install (MAX_PATH)"; exit 1
 fi
 echo "  $(find "$STAGE" -type f | wc -l) files, $(du -sh "$STAGE" | cut -f1)"
