@@ -4,7 +4,7 @@
 // runners = the engine must have fallen back to the bundled Mesa by itself):
 //   MS_APP=%LOCALAPPDATA%\Programs\MathStudio\MathStudio.exe node tests/linux_smoke.mjs
 // or macOS (launched with Finder's minimal PATH; afterwards the bundle's signature must still verify):
-//   MS_APP=release/mac-arm64/MathStudio.app/Contents/MacOS/MathStudio node tests/linux_smoke.mjs
+//   MS_APP=release/mac-arm64/MathStudio.app/Contents/MacOS/MathStudio node tests/linux_smoke.mjs  (after build.sh --install: MS_APP=/Applications/MathStudio.app/…)
 // Engine boots from the bundled Python, library thumbnails render, GL renderer detected, Auto picks
 // Low on software GL, semantic search works offline from the bundled model, preview renders a
 // clip, an mp4 export goes through the bundled ffmpeg, LaTeX-less systems get a readable error.

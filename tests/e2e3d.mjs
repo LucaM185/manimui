@@ -65,6 +65,8 @@ const waitFrame = async (pred = () => true, timeout = 8000) => {
 const stageBox = async () => win.locator('.stage').boundingBox();
 const setTime = (t) => win.evaluate((t) => window.__ms.store.getState().setTime(t), t);
 const cam0 = (st) => (st.project.settings.camera || [])[0] || {};
+/** the camera waypoint at the playhead */
+const camKeyNow = (st) => (st.project.settings.camera || []).find((k) => Math.abs(k.t - st.time) < 1e-3) || {};
 /** bounding box (CSS px, page coords) and centroid of canvas pixels that are not the background */
 const ink = (colorOnly = false) => win.evaluate((colorOnly) => {
   const c = document.querySelector('.stage-canvas');
@@ -300,7 +302,9 @@ console.log('6. editor view -> camera');
 const evSet = st.editorView;
 await win.click('[data-testid="set-camera-here"]');
 st = await waitFrame((s) => !s.editorView);
-check(!st.editorView && (st.project.settings.camera || []).length === 1 && near(cam0(st).zoom, evSet.zoom, 1e-3) && near(cam0(st).theta, evSet.theta, 1e-3), 'Set camera here copies the view to the (static) camera');
+const keys6 = st.project.settings.camera || [];
+check(!st.editorView && keys6.length === 2 && near(keys6[0].theta, ISO.theta, 1e-6) && near(camKeyNow(st).zoom, evSet.zoom, 1e-3) && near(camKeyNow(st).theta, evSet.theta, 1e-3), `Set camera here adds a camera waypoint at the playhead (${JSON.stringify(keys6)} ev ${JSON.stringify(evSet)} iso ${JSON.stringify(ISO)} t ${st.time})`);
+check(await win.locator('.cam-key').count() === 2, 'the new waypoint shows on the timeline camera track');
 check(near(st.meta.camera.zoom, evSet.zoom, 1e-3) && !st.meta.view?.grid, 'preview looks through the camera again');
 await undo();
 st = await waitFrame();
@@ -379,7 +383,7 @@ check(near(yp(st.editorView).pitch, 90, 0.5) && JSON.stringify(st.project.settin
 ev8 = st.editorView;
 await win.click('[data-testid="set-camera-here"]');
 st = await waitFrame((s) => !s.editorView);
-check(near(yp(cam0(st)).pitch, 90, 0.5) && near(cam0(st).zoom, ev8.zoom, 1e-3) && st.past === past8 + 1, `the camera button is what sets the camera (θ ${cameraTheta(st)})`);
+check(near(yp(camKeyNow(st)).pitch, 90, 0.5) && near(camKeyNow(st).zoom, ev8.zoom, 1e-3) && st.past === past8 + 1, `the camera button is what sets the camera (θ ${cameraTheta(st)})`);
 await undo();
 st = await waitFrame();
 check(near(cameraTheta(st), thetaBefore, 1e-6), 'one undo step for Set camera here');

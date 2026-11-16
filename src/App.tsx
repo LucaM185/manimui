@@ -1,5 +1,5 @@
 import { BootScreen, BootError } from './components/BootScreen';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore, type Tool } from './store';
 import { flushAll, scheduleSave } from './autosave';
 import { previousSession, useStrip, isSid } from './sessions';
@@ -36,6 +36,10 @@ import {
 } from './actions';
 import { normalizeProject, addKeyAt, CAMERA_ID, setCameraAt } from './ops';
 import { exitEditorView, fitNav, lookPreset } from './nav';
+
+/** padding around the stage inside .preview-wrap (Preview's sizing effect) */
+const STAGE_PAD = 20;
+const TIMELINE_MIN = 160;
 
 /** a tool key held at least this long reverts to the previous tool on release (FCP press-and-hold) */
 const HOLD_MS = 350;
@@ -79,7 +83,24 @@ export default function App() {
   const [globalsH, setGlobalsH] = usePersisted('ms.globalsH', 200);
   const [globalsCollapsed, setGlobalsCollapsed] = usePersisted('ms.globalsCollapsed', false);
   const [rightW, setRightW] = useState(360);
+  // The timeline takes whatever height leaves the 16:9 stage snug in the center column (no
+  // letterbox bands) until the user drags the splitter; double-clicking it goes back to auto.
+  const [timelineAuto, setTimelineAuto] = useState(true);
   const booted = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!timelineAuto || !library) return;
+    const fit = () => {
+      const wrap = document.querySelector<HTMLElement>('.preview-wrap');
+      if (!wrap || !wrap.clientWidth) return;
+      const want = Math.round(((wrap.clientWidth - 2 * STAGE_PAD) * 9) / 16 + 2 * STAGE_PAD);
+      const max = Math.min(700, window.innerHeight - 46 - 4 - 240);
+      setTimelineH((h) => Math.max(TIMELINE_MIN, Math.min(Math.max(TIMELINE_MIN, max), Math.round(h + wrap.clientHeight - want))));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [timelineAuto, library, leftW, rightW]);
 
   // ------------------------------------------------------------ boot the engine
   useEffect(() => {
@@ -383,7 +404,13 @@ export default function App() {
         </div>
         {rightTab === 'inspector' ? <Inspector /> : rightTab === 'agent' ? <AgentPanel /> : <SettingsPanel />}
       </div>
-      <div className="hsplit" onPointerDown={(e) => { const h = timelineH; drag((_dx, dy) => setTimelineH(Math.max(160, Math.min(700, h - dy))))(e); }} />
+      <div
+        className="hsplit"
+        data-testid="timeline-split"
+        title="Drag to resize · double-click to fit the preview"
+        onPointerDown={(e) => { const h = timelineH; drag((_dx, dy) => { if (dy) setTimelineAuto(false); setTimelineH(Math.max(TIMELINE_MIN, Math.min(700, h - dy))); })(e); }}
+        onDoubleClick={() => setTimelineAuto(true)}
+      />
       <Timeline />
       {exportOpen && <ExportDialog />}
       {projectsOpen && <ProjectsPanel />}

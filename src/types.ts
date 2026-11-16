@@ -281,6 +281,8 @@ export interface AiChatResult {
   message?: AiMessage;
   finish?: string | null;
   usage?: { prompt_tokens: number; completion_tokens: number; cost?: number } | null;
+  /** OpenRouter provider that served the call (e.g. "Together") */
+  provider?: string | null;
   error?: string;
   code?: string;
   aborted?: boolean;

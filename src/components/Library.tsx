@@ -5,9 +5,11 @@ import { addItem, switchToProject } from '../actions';
 import { CATEGORY_COLORS } from '../ops';
 import type { LibraryItem } from '../types';
 import { CategoryIcon } from '../icons';
-import { FolderOpen, Globe, LoaderCircle, Lock, Maximize2, Minimize2, Package, Plus, Search, Sparkles, Timer, Trash2, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { FolderOpen, Globe, Hand, LoaderCircle, Lock, Maximize2, Minimize2, Package, Plus, Search, Sparkles, Timer, Trash2, X } from 'lucide-react';
 import ContextMenu, { type MenuItem } from './ContextMenu';
 import { usePlan } from './MakeMobjectDialog';
+import './DragHint.css';
 
 export const DND_ITEM = 'application/x-ms-item';
 export const DND_ASSET = 'application/x-ms-asset';
@@ -157,8 +159,40 @@ function useMobjectMenu() {
 
 const MobjectMenu = createContext<((x: number, y: number, item: LibraryItem) => void) | null>(null);
 
+/** A single click on a card does nothing by itself — cards are dragged — so it flashes a big
+ *  "Drag to use" hint in the middle of the screen.  A double-click (adds at the playhead) hides it. */
+const DragHintCtx = createContext<((item: LibraryItem | null) => void) | null>(null);
+
+function useDragHint() {
+  const [hint, setHint] = useState<{ item: LibraryItem; n: number } | null>(null);
+  const timer = useRef<number>();
+  const show = (item: LibraryItem | null) => {
+    window.clearTimeout(timer.current);
+    if (!item) return setHint(null);
+    setHint((h) => ({ item, n: (h?.n || 0) + 1 }));
+    timer.current = window.setTimeout(() => setHint(null), 1600);
+  };
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const el = hint
+    ? createPortal(
+        <div className="drag-hint" key={hint.n} data-testid="drag-hint" aria-live="polite">
+          <div className="drag-hint-card">
+            <Hand size={44} className="drag-hint-ico" />
+            <div className="drag-hint-title">Drag to use</div>
+            <div className="drag-hint-sub">
+              Drag <b>{hint.item.name}</b> onto the preview or the timeline · double-click to add at the playhead
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null;
+  return { show, el };
+}
+
 function Card({ item, active, related }: { item: LibraryItem; active?: boolean; related?: boolean }) {
   const openMenu = useContext(MobjectMenu);
+  const showHint = useContext(DragHintCtx);
   const [hover, setHover] = useState(false);
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -197,10 +231,12 @@ function Card({ item, active, related }: { item: LibraryItem; active?: boolean; 
         e.dataTransfer.effectAllowed = 'copy';
         const img = (e.currentTarget as HTMLElement).querySelector('img');
         if (img) e.dataTransfer.setDragImage(img, 60, 34);
+        showHint?.(null);
       }}
+      onClick={(e) => showHint?.(e.detail >= 2 ? null : item)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onDoubleClick={() => addItem(item.id)}
+      onDoubleClick={() => { showHint?.(null); addItem(item.id); }}
     >
       <div className="lib-thumb">
         {!near ? null : !failed ? (
@@ -273,6 +309,7 @@ export default function Library() {
   const inputRef = useRef<HTMLInputElement>(null);
   const { res, status, failed } = useSemanticSearch(q);
   const mobjectMenu = useMobjectMenu();
+  const dragHint = useDragHint();
   const query = q.trim();
   const searching = query.length > 0;
 
@@ -318,9 +355,16 @@ export default function Library() {
 
   return (
     <MobjectMenu.Provider value={mobjectMenu.open}>
+    <DragHintCtx.Provider value={dragHint.show}>
     {full && <div className="library-slot" />}
     {full && <div className="library-backdrop" data-testid="library-backdrop" onMouseDown={() => setFull(false)} />}
-    <aside className={`panel library ${full ? 'full' : ''}`}>
+    <aside
+      className={`panel library ${full ? 'full' : ''}`}
+      // Dragging a card out of the popup closes it, so the preview and timeline underneath
+      // are free to drop on.  Deferred one tick: the card stays mounted (the panel just goes
+      // back to its sidebar slot), but changing layout inside dragstart can cancel the drag.
+      onDragStart={() => { if (full) window.setTimeout(() => setFull(false), 0); }}
+    >
       <div className="search">
         <div className="search-box">
         <Search size={14} className="search-ico" />
@@ -422,6 +466,8 @@ export default function Library() {
       </div>
     </aside>
     {mobjectMenu.el}
+    {dragHint.el}
+    </DragHintCtx.Provider>
     </MobjectMenu.Provider>
   );
 }

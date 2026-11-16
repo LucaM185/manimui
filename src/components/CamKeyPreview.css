@@ -1,0 +1,16 @@
+/* camera waypoint hover card: the rendered frame the camera sees at that key */
+.cam-preview { position: fixed; z-index: 1000; padding: 6px 6px 5px; background: var(--raised); border: 1px solid var(--border2); border-radius: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); pointer-events: none; animation: cam-preview-in .12s ease-out; }
+@keyframes cam-preview-in { from { opacity: 0; translate: 0 4px; } to { opacity: 1; translate: none; } }
+.cam-preview-frame { position: relative; overflow: hidden; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(91, 157, 255, .55); }
+.cam-preview-frame canvas { display: block; transition: opacity .15s; }
+.cam-preview-frame canvas.stale { opacity: .45; }
+.cam-preview-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; }
+.cam-preview-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .15); border-top-color: var(--accent); animation: cam-preview-spin .8s linear infinite; }
+@keyframes cam-preview-spin { to { transform: rotate(360deg); } }
+.cam-preview-cap { display: flex; align-items: baseline; gap: 8px; padding: 5px 2px 0; font-size: 11px; white-space: nowrap; overflow: hidden; }
+.cam-preview-cap b { color: #8fb8ff; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cam-preview-cap .muted { overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.cam-preview-hint { padding: 1px 2px 0; font-size: 10px; color: var(--faint); }
+.cam-preview-arrow { position: absolute; width: 10px; height: 10px; margin-left: -5px; background: var(--raised); transform: rotate(45deg); }
+.cam-preview.up .cam-preview-arrow { bottom: -6px; border-right: 1px solid var(--border2); border-bottom: 1px solid var(--border2); }
+.cam-preview.down .cam-preview-arrow { top: -6px; border-left: 1px solid var(--border2); border-top: 1px solid var(--border2); }

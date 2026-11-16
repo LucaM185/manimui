@@ -1122,9 +1122,9 @@ export default function Preview() {
           )}
           {freeView && !animPreview && (
             <div className="editor-view-badge" data-testid="editor-view-badge">
-              <span className="dot" /> Editor view <span className="muted">· not exported</span>
-              <button onClick={cameraToEditorView} data-testid="set-camera-here" title="Copy this viewpoint to the scene camera">Set camera here</button>
-              <button onClick={exitEditorView} data-testid="exit-editor-view" title="Look through the scene camera (0)">Camera view</button>
+              <span className="dot" /> Viewing scene in 3rd person
+              <button onClick={cameraToEditorView} data-testid="set-camera-here" title="Add a camera waypoint at the playhead with this viewpoint">Set camera here</button>
+              <button onClick={exitEditorView} data-testid="exit-editor-view" title="Look through the scene camera (0)">Back to camera view</button>
             </div>
           )}
           {!animPreview && meta && !fullView && <ViewCube view={view} editor={!!freeView} />}

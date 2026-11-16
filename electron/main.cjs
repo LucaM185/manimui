@@ -1198,6 +1198,7 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
   const msg = { role: 'assistant', content: '', tool_calls: [], reasoning_details: [] };
   let finish = null;
   let usage = null;
+  let provider = null;
   try {
     let res = null;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -1235,6 +1236,7 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
         try { j = JSON.parse(data); } catch (_) { continue; }
         if (j.error) return { error: `OpenRouter: ${j.error.message || JSON.stringify(j.error)}`, code: 'stream', partial: msg };
         if (j.usage) usage = j.usage;
+        if (j.provider) provider = j.provider;
         const ch = j.choices && j.choices[0];
         if (!ch) continue;
         if (ch.finish_reason) finish = ch.finish_reason;
@@ -1264,7 +1266,16 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
   msg.tool_calls = msg.tool_calls.filter(Boolean);
   if (!msg.tool_calls.length) delete msg.tool_calls;
   if (!msg.reasoning_details.length) delete msg.reasoning_details;
-  return { message: msg, finish, usage };
+  // with the user's own provider key (BYOK) OpenRouter reports cost 0; show what the provider bills
+  const upstream = usage && usage.cost_details && usage.cost_details.upstream_inference_cost;
+  if (usage && !usage.cost && typeof upstream === 'number') usage.cost = upstream;
+  // MATHSTUDIO_AI_LOG=<file> appends one JSON line per call (provider, tokens, cache hits): for checking prompt caching
+  if (process.env.MATHSTUDIO_AI_LOG && usage) {
+    const d = usage.prompt_tokens_details || {};
+    const line = { t: new Date().toISOString(), provider, finish, prompt: usage.prompt_tokens, cached: d.cached_tokens || 0, written: d.cache_write_tokens || 0, out: usage.completion_tokens, cost: usage.cost };
+    try { fs.appendFileSync(process.env.MATHSTUDIO_AI_LOG, `${JSON.stringify(line)}\n`); } catch (_) { /* best effort */ }
+  }
+  return { message: msg, finish, usage, provider };
 });
 
 // ------------------------------------------------------------------ updates

@@ -6,6 +6,9 @@
 //   ndc    = (v.x · 2/FW, v.y · 2/FH) / (1 − v.z · K)   (K = 2·tan(fovy/2) / FH, fovy = 45°)
 // so overlays line up with the rendered pixels in any orientation.
 import { DEFAULT_CAM, FRAME_H as FH, FRAME_W as FW, isFlat, type Cam } from './ops';
+import { basis, isYUp, nearestTurn, orientBetween, yawPitch, yUpAngles } from './camOrient';
+
+export { basis, isYUp, nearestTurn, yawPitch, yUpAngles };
 
 export type V3 = [number, number, number];
 export interface Pt { x: number; y: number }
@@ -19,19 +22,6 @@ export const mul = (a: V3, s: number): V3 => [a[0] * s, a[1] * s, a[2] * s];
 export const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 export const norm = (a: V3) => Math.hypot(a[0], a[1], a[2]);
 export const unit = (a: V3): V3 => mul(a, 1 / (norm(a) || 1));
-
-/** Columns of the camera rotation: screen right, screen up and "out" (from the centre towards the camera). */
-export function basis(c: Pick<Cam, 'theta' | 'phi' | 'gamma'>): { right: V3; up: V3; out: V3 } {
-  const [t, p, g] = [c.theta * DEG, c.phi * DEG, c.gamma * DEG];
-  const ct = Math.cos(t), st = Math.sin(t), cp = Math.cos(p), sp = Math.sin(p), cg = Math.cos(g), sg = Math.sin(g);
-  // Rz(t) · Rx(p) · Rz(g)
-  const m = [
-    [ct * cg - st * cp * sg, -ct * sg - st * cp * cg, st * sp],
-    [st * cg + ct * cp * sg, -st * sg + ct * cp * cg, -ct * sp],
-    [sp * sg, sp * cg, cp],
-  ];
-  return { right: [m[0][0], m[1][0], m[2][0]], up: [m[0][1], m[1][1], m[2][1]], out: [m[0][2], m[1][2], m[2][2]] };
-}
 
 export interface Projector {
   cam: Cam;
@@ -94,45 +84,6 @@ export const IDENTITY_CAM: Cam = { ...DEFAULT_CAM };
 
 // ---------------------------------------------------------------- navigation
 export const ORBIT_DEG_PER_PX = 0.4;
-
-/**
- * Camera angles (ManimGL zxz Euler) for a Y-up turntable view: `yaw` swings the camera around the
- * world Y axis (0 = looking at the XY plane from +z, i.e. the classic 2D view), `pitch` raises it
- * towards +Y (90 = straight down). There is never any roll, so Y stays "up" on screen.
- */
-export function yUpAngles(yawDeg: number, pitchDeg: number, ref: Pick<Cam, 'theta' | 'gamma'> = { theta: 0, gamma: 0 }): { theta: number; phi: number; gamma: number } {
-  const y = yawDeg * DEG, p = pitchDeg * DEG;
-  const out: V3 = [Math.cos(p) * Math.sin(y), Math.sin(p), Math.cos(p) * Math.cos(y)];
-  const right: V3 = [Math.cos(y), 0, -Math.sin(y)];
-  const up: V3 = [out[1] * right[2] - out[2] * right[1], out[2] * right[0] - out[0] * right[2], out[0] * right[1] - out[1] * right[0]];
-  const phi = Math.acos(Math.max(-1, Math.min(1, out[2])));
-  let theta: number, gamma: number;
-  if (Math.sin(phi) > 1e-6) {
-    theta = Math.atan2(out[0], -out[1]) / DEG;
-    gamma = Math.atan2(right[2], up[2]) / DEG;
-  } else {
-    // looking straight along ±z: only theta + gamma matters, put the whole turn in theta
-    theta = Math.atan2(right[1], right[0]) / DEG;
-    gamma = 0;
-  }
-  return { theta: nearestTurn(theta, ref.theta), phi: phi / DEG, gamma: nearestTurn(gamma, ref.gamma) };
-}
-
-/** yaw / pitch (degrees) of the direction from the centre to the eye. */
-export function yawPitch(c: Pick<Cam, 'theta' | 'phi' | 'gamma'>, refYaw = 0): { yaw: number; pitch: number } {
-  const { out, right } = basis(c);
-  const pitch = Math.asin(Math.max(-1, Math.min(1, out[1]))) / DEG;
-  if (Math.hypot(out[0], out[2]) > 1e-3) return { yaw: nearestTurn(Math.atan2(out[0], out[2]) / DEG, refYaw), pitch };
-  // straight above / below: the heading lives in the screen-right vector (horizontal, no roll)
-  if (Math.hypot(right[0], right[2]) > 1e-3) return { yaw: nearestTurn(Math.atan2(-right[2], right[0]) / DEG, refYaw), pitch };
-  return { yaw: refYaw, pitch };
-}
-
-/** True when the view has no roll (screen-right is horizontal, Y points up), i.e. it is a yaw/pitch view. */
-export function isYUp(c: Pick<Cam, 'theta' | 'phi' | 'gamma'>) {
-  const { right, up } = basis(c);
-  return Math.abs(right[1]) < 1e-3 && up[1] > -1e-3;
-}
 
 /** Turntable orbit around the centre with Y up (like three.js / most 3D viewers): drag right turns the scene right. */
 export function orbit(c: Cam, dxPx: number, dyPx: number): Cam {
@@ -198,11 +149,6 @@ export function anglesFor(d: V3, ref: Pick<Cam, 'theta' | 'phi' | 'gamma'> = { t
   // straight above / below: keep the current heading, so the view doesn't spin half a turn on the way up
   const yaw = Math.hypot(u[0], u[2]) < 1e-6 ? yawPitch(ref).yaw : nearestTurn(Math.atan2(u[0], u[2]) / DEG, yawPitch(ref).yaw);
   return yUpAngles(yaw, pitch, ref);
-}
-
-/** theta + k·360 closest to `ref`, so view changes take the short way round. */
-export function nearestTurn(theta: number, ref: number) {
-  return theta + 360 * Math.round((ref - theta) / 360);
 }
 
 /** Named views (Y up). Front = the classic 2D view: the XY plane seen from +z. */
@@ -352,66 +298,11 @@ export function lerpCam(a: Cam, b: Cam, f: number): Cam {
 }
 
 /**
- * Ease the orientation between two views along the direct path (used by view-cube / preset fly-tos).
- * Lerping the zxz Euler angles makes the eye wander and roll on the way (corner clicks swing out
- * sideways); instead Y-up views move in a straight line in yaw / pitch (short way round, never
- * rolling), and anything with roll falls back to a quaternion slerp (the shortest rotation).
+ * Ease between two views along the direct path (used by view-cube / preset fly-tos): centre and
+ * zoom as lerpCam, orientation via orientBetween (yaw / pitch for Y-up views, else slerp).
  */
 export function lerpView(a: Cam, b: Cam, f: number, ref: Pick<Cam, 'theta' | 'gamma'> = a): Cam {
-  const base = lerpCam(a, b, f);
-  if (isYUp(a) && isYUp(b)) {
-    const pa = yawPitch(a);
-    const pb = yawPitch(b, pa.yaw);
-    // top / bottom views have a heading too (yawPitch reads it from screen-right), so this is well defined
-    return { ...base, ...yUpAngles(pa.yaw + (pb.yaw - pa.yaw) * f, pa.pitch + (pb.pitch - pa.pitch) * f, ref) };
-  }
-  const q = slerp(quatOf(a), quatOf(b), f);
-  const e = eulerOf(q);
-  return { ...base, theta: nearestTurn(e.theta, ref.theta), phi: e.phi, gamma: nearestTurn(e.gamma, ref.gamma) };
-}
-
-type Quat = [number, number, number, number]; // w, x, y, z
-function quatOf(c: Pick<Cam, 'theta' | 'phi' | 'gamma'>): Quat {
-  const { right: r, up: u, out: o } = basis(c);
-  // rotation matrix with columns right / up / out
-  const m00 = r[0], m01 = u[0], m02 = o[0], m10 = r[1], m11 = u[1], m12 = o[1], m20 = r[2], m21 = u[2], m22 = o[2];
-  const tr = m00 + m11 + m22;
-  let q: Quat;
-  if (tr > 0) {
-    const s = Math.sqrt(tr + 1) * 2;
-    q = [0.25 * s, (m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s];
-  } else if (m00 > m11 && m00 > m22) {
-    const s = Math.sqrt(1 + m00 - m11 - m22) * 2;
-    q = [(m21 - m12) / s, 0.25 * s, (m01 + m10) / s, (m02 + m20) / s];
-  } else if (m11 > m22) {
-    const s = Math.sqrt(1 + m11 - m00 - m22) * 2;
-    q = [(m02 - m20) / s, (m01 + m10) / s, 0.25 * s, (m12 + m21) / s];
-  } else {
-    const s = Math.sqrt(1 + m22 - m00 - m11) * 2;
-    q = [(m10 - m01) / s, (m02 + m20) / s, (m12 + m21) / s, 0.25 * s];
-  }
-  return q;
-}
-function slerp(a: Quat, b: Quat, f: number): Quat {
-  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-  if (d < 0) { b = [-b[0], -b[1], -b[2], -b[3]]; d = -d; }
-  if (d > 0.9995) {
-    const q = a.map((v, i) => v + (b[i] - v) * f) as Quat;
-    const n = Math.hypot(...q);
-    return q.map((v) => v / n) as Quat;
-  }
-  const th = Math.acos(d);
-  const sa = Math.sin((1 - f) * th) / Math.sin(th), sb = Math.sin(f * th) / Math.sin(th);
-  return a.map((v, i) => v * sa + b[i] * sb) as Quat;
-}
-/** Quaternion → ManimGL zxz Euler angles (degrees), R = Rz(theta)·Rx(phi)·Rz(gamma). */
-function eulerOf([w, x, y, z]: Quat): { theta: number; phi: number; gamma: number } {
-  const m00 = 1 - 2 * (y * y + z * z), m10 = 2 * (x * y + w * z);
-  const m02 = 2 * (x * z + w * y), m12 = 2 * (y * z - w * x), m22 = 1 - 2 * (x * x + y * y);
-  const m20 = 2 * (x * z - w * y), m21 = 2 * (y * z + w * x);
-  const phi = Math.acos(Math.max(-1, Math.min(1, m22)));
-  if (Math.sin(phi) > 1e-6) return { theta: Math.atan2(m02, -m12) / DEG, phi: phi / DEG, gamma: Math.atan2(m20, m21) / DEG };
-  return { theta: Math.atan2(m10, m00) / DEG, phi: phi / DEG, gamma: 0 };
+  return { ...lerpCam(a, b, f), ...orientBetween(a, b, f, ref) };
 }
 
 const EYE_WORDS: Record<string, string> = {

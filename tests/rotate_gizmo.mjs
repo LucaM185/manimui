@@ -35,9 +35,17 @@ const tool = (name, args) => S(async ([name, args]) => {
 const tr = (id) => S((id) => { const c = window.__ms.store.getState().project.clips.find((c) => c.id === id); return { ...c.transform, keys: c.keys.length }; }, id);
 const gizmo = win.locator('[data-testid="rot-gizmo"]');
 const settle = () => win.waitForTimeout(700);
+const isOpen = async () => (await gizmo.getAttribute('data-open')) === '1';
+// the widget is a small icon until hovered; open it (and let the animation finish)
+const openGizmo = async () => {
+  if (await isOpen()) return;
+  await win.hover('[data-testid="rot-icon"]');
+  await win.waitForTimeout(650);
+};
 const zero = (id) => S((id) => window.__ms.store.getState().commit((p) => { const c = p.clips.find((c) => c.id === id); c.transform = { ...c.transform, rotation: 0, rx: 0, ry: 0 }; c.keys = []; }), id);
 // an arrow of the widget: where to click it, and the way it points on screen (y down)
 const arrow = async (axis, name) => {
+  await openGizmo();
   const el = win.locator(`[data-testid="rot-${axis}-${name}"]`);
   const mid = (await el.getAttribute('data-mid')).split(',').map(Number);
   const dir = (await el.getAttribute('data-dir')).split(',').map(Number);
@@ -46,10 +54,42 @@ const arrow = async (axis, name) => {
 };
 // every arrow's click point lands on that arrow (the rings share one gimbal, so nothing may cover it)
 const arrowsReachable = async (label) => {
+  await openGizmo();
   for (const ax of ['x', 'y', 'z']) for (const name of ['pos', 'neg']) {
     const a = await arrow(ax, name);
     const hit = await S(([x, y]) => document.elementFromPoint(x, y)?.closest('.rot-arrow')?.getAttribute('data-testid') || null, [a.x, a.y]);
     check(hit === `rot-${ax}-${name}`, `${label}: ${ax.toUpperCase()} ${name} arrow is clickable at its mid point (hit ${hit})`);
+  }
+  // where two arrows overlap, the click area is split between them (not all to the one painted on
+  // top), and nothing more than a couple of px away from every arrow is clickable
+  const r = await S(() => {
+    const svg = document.querySelector('[data-testid="rot-ring"]');
+    const box = svg.getBoundingClientRect();
+    const shapes = [...svg.querySelectorAll('.rot-arrow')].map((g) => ({ id: g.getAttribute('data-testid'), el: g.querySelector('.rot-arrow-shape') }));
+    const pt = svg.createSVGPoint();
+    const overlaps = {}, strayAt = []; let stray = 0, holes = 0, inside = 0;
+    for (let y = 0.5; y < box.height; y += 1) for (let x = 0.5; x < box.width; x += 1) {
+      pt.x = x; pt.y = y;
+      const inS = shapes.filter((s) => s.el.isPointInFill(pt)).map((s) => s.id);
+      const hit = document.elementFromPoint(box.x + x, box.y + y)?.closest('.rot-arrow')?.getAttribute('data-testid') || null;
+      if (inS.length) { inside++; if (!hit) holes++; }
+      if (inS.length === 2) { const k = inS.sort().join('|'); (overlaps[k] ||= {})[hit] = ((overlaps[k] ||= {})[hit] || 0) + 1; }
+      if (!inS.length && hit) {
+        // allowed only right next to an arrow (2 px grace, more off a sharp arrowhead corner + pixel rounding)
+        let close = false;
+        for (let dy = -4; dy <= 4 && !close; dy += 0.25) for (let dx = -4; dx <= 4 && !close; dx += 0.25) { if (dx * dx + dy * dy > 16) continue; pt.x = x + dx; pt.y = y + dy; close = shapes.some((s) => s.el.isPointInFill(pt)); }
+        if (!close) { stray++; if (strayAt.length < 6) strayAt.push(`${x},${y}:${hit}`); }
+      }
+    }
+    return { overlaps, stray, strayAt, holes, inside };
+  });
+  check(r.holes <= r.inside * 0.01, `${label}: the whole of every arrow is clickable (${r.holes} of ${r.inside} px not)`);
+  check(r.stray === 0, `${label}: nothing between the arrows is clickable (${r.stray} stray px ${r.strayAt.join(' ')})`);
+  for (const [pair, hits] of Object.entries(r.overlaps)) {
+    const [a, b] = pair.split('|');
+    const na = hits[a] || 0, nb = hits[b] || 0, tot = Object.values(hits).reduce((x, y) => x + y, 0);
+    if (tot < 12) continue; // a corner just touching
+    check(na > 0 && nb > 0 && na + nb === tot, `${label}: ${a} / ${b} overlap is split between them (${na} / ${nb} of ${tot} px)`);
   }
 };
 const clickArrow = async (axis, name, mod) => {
@@ -108,6 +148,46 @@ check(await gizmo.isVisible(), 'widget appears for the selected clip');
 const gb = await gizmo.boundingBox();
 check(gb && gb.x + gb.width > stage.x + stage.width - 20 && gb.y + gb.height > stage.y + stage.height - 20, `widget sits in the stage's bottom-right corner (${JSON.stringify(gb)})`);
 await win.screenshot({ path: path.join(OUT, '1_selected.png') });
+
+console.log('1b. collapsed to an icon; hovering it opens the panel, leaving closes it');
+await win.mouse.move(stage.x + 30, stage.y + 30);
+await win.waitForTimeout(500);
+check(!(await isOpen()), 'starts collapsed');
+check(gb && gb.width <= 50 && gb.height <= 50, `collapsed = a small icon (${gb && gb.width}×${gb && gb.height})`);
+check(await win.locator('[data-testid="rot-icon"] .rot-icon-arrow').count() === 6, 'the icon is the gimbal in small, six arrows');
+const xMid = await win.locator('[data-testid="rot-x-pos"]').getAttribute('data-mid');
+check(await S(() => getComputedStyle(document.querySelector('.rot-panel')).visibility) === 'hidden', 'panel hidden while collapsed');
+await win.hover('[data-testid="rot-icon"]');
+await win.waitForTimeout(90);
+const midAnim = await S(() => { const p = document.querySelector('.rot-panel').getBoundingClientRect(); return { w: p.width, op: +getComputedStyle(document.querySelector('.rot-panel')).opacity }; });
+await win.screenshot({ path: path.join(OUT, '1b_opening.png') });
+await win.waitForTimeout(600);
+check(await isOpen(), 'hovering the icon opens it');
+const pb = await win.locator('.rot-panel').boundingBox();
+check(pb && pb.width > 180 && pb.height > 110, `open panel is full size (${pb && pb.width}×${pb && pb.height})`);
+check(midAnim.w < pb.width - 5 || midAnim.op < 0.98, `it grows in (90 ms in: ${midAnim.w.toFixed(0)} px wide, opacity ${midAnim.op.toFixed(2)})`);
+check(pb && Math.abs(pb.x + pb.width - (gb.x + gb.width)) < 1.5 && Math.abs(pb.y + pb.height - (gb.y + gb.height)) < 1.5, 'panel opens from the same corner as the icon');
+await win.screenshot({ path: path.join(OUT, '1c_open.png') });
+// moving across the panel keeps it open; leaving closes it after a moment
+await win.mouse.move(pb.x + 20, pb.y + 20, { steps: 4 });
+await win.waitForTimeout(500);
+check(await isOpen(), 'stays open while the pointer is on the panel');
+await win.mouse.move(stage.x + 30, stage.y + 30, { steps: 4 });
+await win.waitForTimeout(100);
+check(await isOpen(), 'does not snap shut the instant the pointer leaves');
+await win.waitForTimeout(600);
+check(!(await isOpen()), 'closes after the pointer leaves');
+check(await win.locator('[data-testid="rot-icon"]').isVisible(), 'icon is back');
+// keyboard: Tab onto the icon opens it
+await win.locator('[data-testid="rot-icon"]').focus();
+await win.keyboard.press('Shift+Tab');
+await win.keyboard.press('Tab');
+await win.waitForTimeout(500);
+check(await isOpen(), 'keyboard focus on the icon opens it');
+await S(() => document.activeElement && document.activeElement.blur());
+await win.waitForTimeout(600);
+check(!(await isOpen()), 'and closes when focus leaves');
+check(typeof xMid === 'string', 'arrows exist while collapsed');
 
 console.log('2. six arrows, 15° about the world axes');
 check(await win.locator('.rot-arrow').count() === 6, 'three rings carry six arrows');
@@ -218,6 +298,7 @@ check(inkFlat > 2000 && inkEdge < inkFlat * 0.1, `card's blue fill: ${inkFlat}px
 await win.screenshot({ path: path.join(OUT, '3_edge_on.png') });
 
 console.log('4. double-click a chip = 0, reset = all 0, undo restores');
+await openGizmo();
 await win.dblclick('[data-testid="rot-x-val"]');
 await win.waitForTimeout(100);
 check(near((await tr(cid)).rx, 0), 'double-click X chip → Rot X 0');
@@ -225,6 +306,7 @@ await clickArrow('z', 'neg');
 await clickArrow('y', 'neg');
 t = await tr(cid);
 check(near(t.ry, -15) && near(t.rotation, -15), `Z then Y arrows (${t.ry}, ${t.rotation})`);
+await openGizmo();
 await win.click('[data-testid="rot-reset"]');
 await win.waitForTimeout(100);
 t = await tr(cid);
@@ -247,6 +329,8 @@ check(held > 60 && held < 140, `holding the Y arrow for ~1.35 s turned ${held.to
 check(near((await tr(cid)).ry, held, 0.01), 'stops turning on release');
 check(await S(() => window.__ms.store.getState().past.length) === pastH + 1, 'the whole hold is one undo step');
 check(await S(() => window.__ms.store.getState().interacting) === false, 'interacting flag cleared');
+check(await isOpen(), 'still open after a hold');
+await openGizmo();
 const zv = await win.locator('[data-testid="rot-z-val"]').boundingBox();
 await win.mouse.move(zv.x + zv.width / 2, zv.y + zv.height / 2);
 await win.mouse.down();
@@ -257,6 +341,7 @@ check(near(t.rotation, 40, 0.5) && near(t.ry, held, 0.01), `dragging the Z chip 
 check((await S(() => window.__ms.store.getState().selection)).includes(cid), 'using the widget keeps the selection');
 // keyboard: focus an arrow, Enter = one step
 await zero(cid);
+await openGizmo();
 await win.locator('[data-testid="rot-x-neg"]').focus();
 await win.keyboard.press('Enter');
 await win.waitForTimeout(100);
@@ -268,7 +353,9 @@ await tool('update_clips', { updates: [{ id: did, keyframes: [{ t: 0, x: 4 }, { 
 await S(([a, b]) => window.__ms.store.setState({ selection: [a, b] }), [cid, did]);
 await S(() => window.__ms.store.getState().setTime(2));
 await settle();
-check((await gizmo.innerText()).includes('2'), 'header shows the count of selected clips');
+check((await win.locator('[data-testid="rot-icon"]').innerText()).includes('2'), 'icon badge shows the count of selected clips');
+await openGizmo();
+check((await win.locator('.rot-head').innerText()).includes('2'), 'header shows the count of selected clips');
 const before = await tr(cid);
 await clickArrow('x', 'pos');
 const after = await tr(cid);

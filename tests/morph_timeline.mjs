@@ -23,6 +23,8 @@ win.on('pageerror', (e) => errors.push(e.message));
 win.on('console', (m) => m.type() === 'error' && !/status of 422/.test(m.text()) && errors.push(m.text()));
 await win.setViewportSize({ width: 1600, height: 950 });
 await win.waitForSelector('.lib-card', { timeout: 90000 });
+// geometry below is written for a fixed 90 px/s timeline (Fit has its own test: timeline_fit.mjs)
+await win.evaluate(() => window.__ms.store.setState({ zoom: 90, zoomFit: false }));
 const S = (fn, arg) => win.evaluate(fn, arg);
 const waitFor = (pred, arg, ms = 30000) => win.waitForFunction(pred, arg, { timeout: ms }).then(() => true, () => false);
 const shot = async (name) => {
@@ -77,7 +79,7 @@ check(dyn.firstHeld && dyn.lastHeld, 'the still start (0–2s) and end (after 3.
 check(Math.abs(dyn.w - dyn.clipW) < 4, `strip spans the clip (${dyn.w.toFixed(0)} / ${dyn.clipW.toFixed(0)}px)`);
 check(!dyn.img, 'single frozen thumbnail is replaced by the strip');
 const z0 = await S(() => window.__ms.store.getState().zoom);
-await S(() => window.__ms.store.setState({ zoom: window.__ms.store.getState().zoom * 2.5 }));
+await S(() => window.__ms.store.setState({ zoom: window.__ms.store.getState().zoom * 2.5, zoomFit: false }));
 await win.waitForTimeout(150);
 const tiles2 = await S(() => document.querySelectorAll('.clip[data-clip="dyn"] .strip-tile:not(.hold)').length);
 check(tiles2 > dyn.tiles, `zooming in reveals more frames (${dyn.tiles} → ${tiles2})`);

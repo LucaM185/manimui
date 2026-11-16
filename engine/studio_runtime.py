@@ -1159,8 +1159,129 @@ def camera_at(keys: list, t: float) -> dict:
     if not keys:
         return dict(DEFAULT_CAMERA)
     cam = interp_keys(keys, t, DEFAULT_CAMERA, CAMERA_KEYS, DEFAULT_CAMERA)
+    ks = sorted(keys, key=lambda k: k["t"])
+    for a, b in zip(ks, ks[1:]):
+        if a["t"] < t < b["t"]:
+            # the orientation turns directly from one view to the next instead of lerping the
+            # Euler angles one by one (which swings the camera around on the way)
+            f = rate(b.get("ease", "smooth"))((t - a["t"]) / max(b["t"] - a["t"], 1e-9))
+            ea = tuple(float(a.get(k, 0.0) or 0.0) for k in ("theta", "phi", "gamma"))
+            eb = tuple(float(b.get(k, 0.0) or 0.0) for k in ("theta", "phi", "gamma"))
+            cam["theta"], cam["phi"], cam["gamma"] = key_orient_between(ea, eb, f)
+            break
     cam["zoom"] = max(cam["zoom"], 1e-3)
     return cam
+
+
+# Camera orientation between waypoints. Mirrors src/camOrient.ts (keyOrientBetween) exactly, so the
+# editor overlay, the live preview and the export all follow the same path.
+def _cam_basis(theta, phi, gamma):
+    t, p, g = theta * DEGREES, phi * DEGREES, gamma * DEGREES
+    ct, st, cp, sp, cg, sg = math.cos(t), math.sin(t), math.cos(p), math.sin(p), math.cos(g), math.sin(g)
+    m = [
+        [ct * cg - st * cp * sg, -ct * sg - st * cp * cg, st * sp],
+        [st * cg + ct * cp * sg, -st * sg + ct * cp * cg, -ct * sp],
+        [sp * sg, sp * cg, cp],
+    ]
+    return m  # columns: right, up, out
+
+
+def _nearest_turn(a, ref):
+    return a + 360.0 * round((ref - a) / 360.0)
+
+
+def _y_up_angles(yaw, pitch, ref):
+    y, p = yaw * DEGREES, pitch * DEGREES
+    out = (math.cos(p) * math.sin(y), math.sin(p), math.cos(p) * math.cos(y))
+    right = (math.cos(y), 0.0, -math.sin(y))
+    up = (out[1] * right[2] - out[2] * right[1], out[2] * right[0] - out[0] * right[2], out[0] * right[1] - out[1] * right[0])
+    phi = math.acos(max(-1.0, min(1.0, out[2])))
+    if math.sin(phi) > 1e-6:
+        theta = math.degrees(math.atan2(out[0], -out[1]))
+        gamma = math.degrees(math.atan2(right[2], up[2]))
+    else:
+        theta = math.degrees(math.atan2(right[1], right[0]))
+        gamma = 0.0
+    return _nearest_turn(theta, ref[0]), math.degrees(phi), _nearest_turn(gamma, ref[1])
+
+
+def _yaw_pitch(e, ref_yaw=0.0):
+    m = _cam_basis(*e)
+    out = (m[0][2], m[1][2], m[2][2])
+    right = (m[0][0], m[1][0], m[2][0])
+    pitch = math.degrees(math.asin(max(-1.0, min(1.0, out[1]))))
+    if math.hypot(out[0], out[2]) > 1e-3:
+        return _nearest_turn(math.degrees(math.atan2(out[0], out[2])), ref_yaw), pitch
+    if math.hypot(right[0], right[2]) > 1e-3:
+        return _nearest_turn(math.degrees(math.atan2(-right[2], right[0])), ref_yaw), pitch
+    return ref_yaw, pitch
+
+
+def _is_y_up(e):
+    m = _cam_basis(*e)
+    return abs(m[1][0]) < 1e-3 and m[1][1] > -1e-3
+
+
+def _quat_of(e):
+    m = _cam_basis(*e)
+    m00, m01, m02 = m[0]
+    m10, m11, m12 = m[1]
+    m20, m21, m22 = m[2]
+    tr = m00 + m11 + m22
+    if tr > 0:
+        s = math.sqrt(tr + 1) * 2
+        return (0.25 * s, (m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s)
+    if m00 > m11 and m00 > m22:
+        s = math.sqrt(1 + m00 - m11 - m22) * 2
+        return ((m21 - m12) / s, 0.25 * s, (m01 + m10) / s, (m02 + m20) / s)
+    if m11 > m22:
+        s = math.sqrt(1 + m11 - m00 - m22) * 2
+        return ((m02 - m20) / s, (m01 + m10) / s, 0.25 * s, (m12 + m21) / s)
+    s = math.sqrt(1 + m22 - m00 - m11) * 2
+    return ((m10 - m01) / s, (m02 + m20) / s, (m12 + m21) / s, 0.25 * s)
+
+
+def _slerp(a, b, f):
+    d = sum(x * y for x, y in zip(a, b))
+    if d < 0:
+        b, d = tuple(-x for x in b), -d
+    if d > 0.9995:
+        q = [x + (y - x) * f for x, y in zip(a, b)]
+        n = math.sqrt(sum(x * x for x in q))
+        return tuple(x / n for x in q)
+    th = math.acos(d)
+    sa, sb = math.sin((1 - f) * th) / math.sin(th), math.sin(f * th) / math.sin(th)
+    return tuple(x * sa + y * sb for x, y in zip(a, b))
+
+
+def _euler_of(q):
+    w, x, y, z = q
+    m00, m10 = 1 - 2 * (y * y + z * z), 2 * (x * y + w * z)
+    m02, m12, m22 = 2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)
+    m20, m21 = 2 * (x * z - w * y), 2 * (y * z + w * x)
+    phi = math.acos(max(-1.0, min(1.0, m22)))
+    if math.sin(phi) > 1e-6:
+        return math.degrees(math.atan2(m02, -m12)), math.degrees(phi), math.degrees(math.atan2(m20, m21))
+    return math.degrees(math.atan2(m10, m00)), math.degrees(phi), 0.0
+
+
+def key_orient_between(a, b, f):
+    """(theta, phi, gamma) part way between two waypoints: 2D keys (phi 0) lerp the angles (exact,
+    keeps deliberate spins), Y-up views go straight in yaw / pitch, anything rolled slerps."""
+    if f <= 0:
+        return a
+    if f >= 1:
+        return b
+    lin = tuple(x + (y - x) * f for x, y in zip(a, b))
+    if abs(a[1]) < 1e-6 and abs(b[1]) < 1e-6:
+        return lin
+    ref = (lin[0], lin[2])
+    if _is_y_up(a) and _is_y_up(b):
+        ya, pa = _yaw_pitch(a)
+        yb, pb = _yaw_pitch(b, ya)
+        return _y_up_angles(ya + (yb - ya) * f, pa + (pb - pa) * f, ref)
+    th, ph, ga = _euler_of(_slerp(_quat_of(a), _quat_of(b), f))
+    return _nearest_turn(th, ref[0]), ph, _nearest_turn(ga, ref[1])
 
 
 def apply_camera(frame, cam: dict):

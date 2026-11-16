@@ -51,7 +51,7 @@ await S(([a, b, c]) => {
     p.clips.push(a, { ...b, track: p.tracks[1].id }, { ...c, track: p.tracks[2].id });
     a.track = p.tracks[0].id;
   });
-  window.__ms.store.setState({ zoom: 100 });
+  window.__ms.store.setState({ zoom: 100, zoomFit: false });
 }, [
   mk('grp', 't', 0, 6, GROUP),
   mk('eq', 't', 0, 6, 'return Tex(r"x^2 + y^2 = r^2", font_size=72).shift(DOWN*2.5)'),

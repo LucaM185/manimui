@@ -184,18 +184,24 @@ function systemPrompt() {
   return systemCache.text;
 }
 
+// 1-hour cache: the user often looks at the result for more than 5 minutes before the next
+// message, and with the default TTL that message would re-write the whole prompt.
+const CACHE = { type: 'ephemeral', ttl: '1h' } as const;
+
 /** Messages for the API: system + history, with prompt-cache breakpoints on the stable prefix. */
 function requestMessages(sid: string): any[] {
   const hist = chatOf(sid).history;
-  const msgs: any[] = [{ role: 'system', content: [{ type: 'text', text: systemPrompt(), cache_control: { type: 'ephemeral' } }] }];
-  // breakpoint on the latest user message, so later tool rounds of this turn reuse it
+  const msgs: any[] = [{ role: 'system', content: [{ type: 'text', text: systemPrompt(), cache_control: CACHE }] }];
+  // breakpoints on the latest user message (the turn's start) and on the last message, so each
+  // tool round reads everything the previous round sent (max 4 breakpoints: system + these 2)
   let lastUser = -1;
   hist.forEach((m, i) => { if (m.role === 'user') lastUser = i; });
+  const lastIdx = hist.length - 1;
   hist.forEach((m, i) => {
-    if (i === lastUser) {
+    if ((i === lastUser || i === lastIdx) && m.role !== 'assistant' && m.content) {
       const parts = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : [...(m.content as any[])];
       const last = parts.length - 1;
-      parts[last] = { ...parts[last], cache_control: { type: 'ephemeral' } };
+      parts[last] = { ...parts[last], cache_control: CACHE };
       msgs.push({ ...m, content: parts });
     } else msgs.push(m);
   });

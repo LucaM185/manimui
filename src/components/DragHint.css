@@ -1,0 +1,20 @@
+/* "Drag to use" — flashed when a library card is clicked instead of dragged. */
+.drag-hint {
+  position: fixed; inset: 0; z-index: 90; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  animation: drag-hint-life 1.6s ease forwards;
+}
+.drag-hint-card {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 28px 44px 24px; max-width: min(560px, 86vw); text-align: center;
+  background: rgba(16, 18, 24, .96); border: 1px solid rgba(255,255,255,.14); border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.6); backdrop-filter: blur(8px);
+  animation: drag-hint-pop .22s cubic-bezier(.2,.9,.3,1.3);
+}
+.drag-hint-ico { color: #8ab4ff; animation: drag-hint-tug 1s ease-in-out .15s 1; }
+.drag-hint-title { font-size: 44px; font-weight: 700; letter-spacing: -.01em; color: #fff; line-height: 1.05; }
+.drag-hint-sub { font-size: 14px; color: rgba(255,255,255,.62); line-height: 1.45; }
+.drag-hint-sub b { color: rgba(255,255,255,.9); font-weight: 600; }
+@keyframes drag-hint-life { 0%, 78% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes drag-hint-pop { from { transform: scale(.88); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes drag-hint-tug { 0%, 100% { transform: none; } 40% { transform: translate(14px, -6px) rotate(8deg); } }

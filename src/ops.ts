@@ -1,5 +1,6 @@
 // Pure helpers operating on projects
 import type { CamView, Clip, Keyframe, LibraryItem, Project, Track, Transform } from './types';
+import { keyOrientBetween } from './camOrient';
 
 export const uid = (p = '') => p + Math.random().toString(36).slice(2, 9);
 
@@ -288,8 +289,10 @@ export function cameraAt(p: Project, t: number): Cam {
     if (ks[i].t <= t && t <= ks[i + 1].t) {
       const f = (RATE_FNS[ks[i + 1].ease || 'smooth'] || smooth)((t - ks[i].t) / Math.max(ks[i + 1].t - ks[i].t, 1e-9));
       const out: any = {};
-      for (const k of CAM_KEYS) out[k] = a[k] + (b[k] - a[k]) * f;
-      return out;
+      for (const k of ['x', 'y', 'z', 'zoom'] as const) out[k] = a[k] + (b[k] - a[k]) * f;
+      // the orientation turns directly from one view to the next (lerping the Euler angles one by
+      // one swings the camera around on the way); engine studio_runtime.camera_at mirrors this
+      return { ...out, ...keyOrientBetween(a, b, f) };
     }
   }
   return fullCam(ks[ks.length - 1]);

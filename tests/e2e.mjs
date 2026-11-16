@@ -35,6 +35,8 @@ const errors = [];
 win.on('pageerror', (e) => errors.push(e.message));
 win.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 await win.waitForSelector('.lib-card', { timeout: 90000 });
+// geometry below is written for a fixed 90 px/s timeline (Fit has its own test: timeline_fit.mjs)
+await win.evaluate(() => window.__ms.store.setState({ zoom: 90, zoomFit: false }));
 
 const S = (fn, arg) => win.evaluate(fn, arg);
 const state = () => S(() => {

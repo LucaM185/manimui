@@ -6,7 +6,7 @@
 // It is never exported, so the scene camera stays where it is; "Set camera here" copies the view
 // to the camera. Only the camera inspector (fields, presets) edits the camera directly.
 import { useStore } from './store';
-import { CAMERA_ID, DEFAULT_CAM, cameraAt, fullCam, round, setCameraAt, uid, type Cam } from './ops';
+import { CAMERA_ID, DEFAULT_CAM, cameraAt, fullCam, round, setCameraAt, type Cam } from './ops';
 import { anglesFor, fitView, lerpView, nearestTurn, presetAngles, type V3 } from './view3d';
 
 const S = useStore.getState;
@@ -123,19 +123,18 @@ export function exitEditorView() {
   useStore.setState({ editorView: null, interacting: false });
 }
 
-/** Copy the editor view to the camera (a keyframe at the playhead if the camera is animated). */
+/** Copy the editor view to the camera as a waypoint at the playhead (edits the waypoint already
+ *  there, if any). The camera flies from the previous waypoint to this view. */
 export function cameraToEditorView() {
   const s = S();
   const v = s.editorView;
   if (!v) return;
-  const animated = (s.project.settings.camera || []).length > 1;
-  s.commit((p) => {
-    // a static camera stays static; an animated one gets a keyframe at the playhead
-    if (!animated) p.settings.camera = [{ id: uid('ck'), t: 0, ...tidy(v), ease: 'smooth' }];
-    else setCameraAt(p, s.time, tidy(v), p.settings.fps);
-  });
+  const fps = s.project.settings.fps;
+  const tol = 0.5 / fps;
+  const existing = (s.project.settings.camera || []).some((k) => Math.abs(k.t - s.time) <= tol);
+  s.commit((p) => setCameraAt(p, s.time, tidy(v), p.settings.fps));
   useStore.setState({ editorView: null });
-  s.toast(animated ? 'Camera keyframe set to this view' : 'Camera set to this view', 'success');
+  s.toast(existing ? `Camera waypoint at ${s.time.toFixed(1)}s set to this view` : `Camera waypoint added at ${s.time.toFixed(1)}s`, 'success');
 }
 
 export const isEditorView = () => !!S().editorView;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { editClipCode, revealInspector, useStore, itemById } from '../store';
 import { addAsset, addItem, addTransformAt, canCutAt, clipsCuttableAt, deleteSelection, duplicateSelection, hidePart, importFiles, removeTransform, selectTransform, splitAtPlayhead, splitClipsAt, transformPlan } from '../actions';
 import { DND_ASSET, DND_ITEM } from './Library';
@@ -9,6 +9,7 @@ import ContextMenu, { MenuItem } from './ContextMenu';
 import { exitWindow, isMorph, useClipStrip, useClipThumb, type Strip } from '../clipThumbs';
 import { AnimIcon, CategoryIcon } from '../icons';
 import { AnimPopover, type AnchorRect } from './AnimPicker';
+import CamKeyPreview from './CamKeyPreview';
 import {
   AlertTriangle, Camera, ChevronDown, ChevronRight, Code2, Copy, Eye, EyeOff, GripVertical, KeyRound, Layers, ListTree, Lock, Maximize, Minus, Move, Plus, RotateCcw, Scissors, Shuffle, Sparkles, Timer, Trash2, Unlock,
 } from 'lucide-react';
@@ -51,6 +52,11 @@ type DragState =
   | { kind: 'track'; id: string; sy: number; index0: number }
   | { kind: 'part-move' | 'part-l' | 'part-r' | 'part-enter' | 'part-exit'; id: string; path: string; sx: number; orig: Clip; moved: boolean; zone?: { kind: 'enter' | 'exit'; anchor: AnchorRect } };
 
+/** px per second that shows the whole scene in a timeline this wide */
+function fitZoom(scrollW: number, duration: number) {
+  return Math.max(12, Math.min(600, (scrollW - HEADER_W - 40) / Math.max(duration, 1)));
+}
+
 function tickStep(zoom: number) {
   const steps = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
   for (const s of steps) if (s * zoom >= 70) return s;
@@ -81,6 +87,8 @@ export default function Timeline() {
   // the enter / exit / effect chooser opened by clicking that part of a clip
   const [animPop, setAnimPop] = useState<AnimPop | null>(null);
   const animPopRef = useRef(animPop);
+  /** camera waypoint under the pointer: shows what the camera sees there */
+  const [camHover, setCamHover] = useState<{ id: string; anchor: AnchorRect } | null>(null);
   animPopRef.current = animPop;
   const samePop = (a: AnimPop | null, clip: string, kind: AnimPop['kind'], eff?: string, part?: string) => !!a && a.clip === clip && a.kind === kind && a.eff === eff && a.part === part;
   const partsOpen = useStore((s) => s.partsOpen);
@@ -97,6 +105,17 @@ export default function Timeline() {
     return () => ro.disconnect();
   }, []);
   const contentW = Math.max(duration * zoom + 400, viewW - HEADER_W);
+
+  // Fit (the default): keep the whole scene in view as the panel resizes or the scene grows,
+  // until the user zooms by hand (zoom buttons, ⌘-scroll, zoom-bar edges); Fit turns it back on.
+  const zoomFit = useStore((s) => s.zoomFit);
+  useLayoutEffect(() => {
+    if (!zoomFit) return;
+    const el = scrollRef.current;
+    const z = fitZoom(el?.clientWidth || viewW, duration);
+    if (Math.abs(z - useStore.getState().zoom) > 1e-6) useStore.setState({ zoom: z });
+    if (el) el.scrollLeft = 0;
+  }, [zoomFit, duration, viewW]);
 
   // keep playhead visible while playing
   useEffect(() => {
@@ -116,7 +135,7 @@ export default function Timeline() {
       const xIn = e.clientX - r.left - HEADER_W + el.scrollLeft;
       const tAt = xIn / useStore.getState().zoom;
       const nz = Math.min(600, Math.max(12, useStore.getState().zoom * Math.exp(-e.deltaY * 0.01)));
-      useStore.setState({ zoom: nz });
+      useStore.setState({ zoom: nz, zoomFit: false });
       requestAnimationFrame(() => {
         el.scrollLeft = Math.max(0, tAt * nz - (e.clientX - r.left - HEADER_W));
       });
@@ -899,7 +918,7 @@ export default function Timeline() {
 
   return (
     <div className={`panel timeline tool-${tool}`} onPointerDownCapture={blurTypingFocus}>
-      <div className="tl-scroll" ref={scrollRef} onScroll={() => animPopRef.current && setAnimPop(null)} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={() => setBlade(null)} onDragOver={onDragOver} onDragLeave={() => setDropGhost(null)} onDrop={onDrop}>
+      <div className="tl-scroll" ref={scrollRef} onScroll={() => { if (animPopRef.current) setAnimPop(null); setCamHover(null); }} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={() => setBlade(null)} onDragOver={onDragOver} onDragLeave={() => setDropGhost(null)} onDrop={onDrop}>
         <div className="tl-grid" style={{ gridTemplateColumns: `${HEADER_W}px ${contentW}px`, gridTemplateRows: `${RULER_H}px ${CAM_H}px ${lanesH + LANE_H}px` }}>
           {/* ruler */}
           <div className="tl-corner">
@@ -952,10 +971,13 @@ export default function Timeline() {
                 <div
                   className={`cam-key ${Math.abs(k.t - time) < 0.5 / fps ? 'on' : ''}`}
                   style={{ left: k.t * zoom }}
-                  title={`Camera key at ${k.t.toFixed(2)}s — drag to move, double-click to remove`}
+                  aria-label={`Camera key at ${k.t.toFixed(2)}s — drag to move, double-click to remove`}
                   onDoubleClick={(e) => { e.stopPropagation(); useStore.getState().commit((p) => { p.settings.camera = (p.settings.camera || []).filter((x) => x.id !== k.id); }); }}
+                  onPointerEnter={(e) => { if (!e.buttons) setCamHover({ id: k.id, anchor: rectOf(e.currentTarget) }); }}
+                  onPointerLeave={() => setCamHover((h) => (h?.id === k.id ? null : h))}
                   onPointerDown={(e) => {
                     e.stopPropagation();
+                    setCamHover(null); // the viewer shows the key while it is dragged
                     useStore.setState({ selection: [CAMERA_ID], playing: false });
                     useStore.getState().setTime(k.t);
                     useStore.getState().checkpoint();
@@ -1158,6 +1180,10 @@ export default function Timeline() {
       <TimelineZoom scrollRef={scrollRef} zoom={zoom} duration={duration} viewW={viewW} time={time} />
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       {animPop && <ClipAnimPopover pop={animPop} onClose={() => setAnimPop(null)} />}
+      {camHover && (() => {
+        const k = (settings.camera || []).find((x) => x.id === camHover.id);
+        return k ? <CamKeyPreview keyId={k.id} t={k.t} anchor={camHover.anchor} /> : null;
+      })()}
     </div>
   );
 }
@@ -1171,6 +1197,7 @@ function TimelineZoom({ scrollRef, zoom, duration, viewW, time }: {
   time: number;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const zoomFit = useStore((s) => s.zoomFit);
   const [metrics, setMetrics] = useState({ scroll: 0, scrollW: 1, clientW: 1 });
 
   useEffect(() => {
@@ -1197,7 +1224,7 @@ function TimelineZoom({ scrollRef, zoom, duration, viewW, time }: {
   const applyZoom = (nz: number, anchorSec: number) => {
     const el = scrollRef.current;
     const next = Math.max(12, Math.min(600, nz));
-    useStore.setState({ zoom: next });
+    useStore.setState({ zoom: next, zoomFit: false });
     requestAnimationFrame(() => {
       if (el) el.scrollLeft = Math.max(0, anchorSec * next);
     });
@@ -1249,11 +1276,11 @@ function TimelineZoom({ scrollRef, zoom, duration, viewW, time }: {
         <button className="btn small" title="Zoom out" onClick={() => applyZoom(zoom / 1.3, (scrollRef.current?.scrollLeft || 0) / zoom)}><Minus size={14} /></button>
         <button className="btn small" title="Zoom in" onClick={() => applyZoom(zoom * 1.3, (scrollRef.current?.scrollLeft || 0) / zoom)}><Plus size={14} /></button>
         <button
-          className="btn small"
           title="Fit the whole scene"
+          className="btn small"
+          aria-pressed={zoomFit}
           onClick={() => {
-            const w = (scrollRef.current?.clientWidth || viewW) - HEADER_W - 40;
-            useStore.setState({ zoom: Math.max(12, Math.min(600, w / Math.max(duration, 1))) });
+            useStore.setState({ zoom: fitZoom(scrollRef.current?.clientWidth || viewW, duration), zoomFit: true });
             if (scrollRef.current) scrollRef.current.scrollLeft = 0;
           }}
         >

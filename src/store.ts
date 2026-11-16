@@ -51,6 +51,8 @@ interface State {
   playing: boolean;
   loop: boolean;
   zoom: number; // px per second
+  /** timeline zoom follows the scene length and panel width ("Fit"); off once the user zooms by hand */
+  zoomFit: boolean;
   meta: FrameMeta | null;
   metaProject: Project | null; // the project the current preview frame was rendered from
   codeOpen: boolean;
@@ -92,7 +94,7 @@ interface State {
 export const newSessionId = () => `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 /** Per-project state: what each open project keeps while another one is on screen. */
-export const DOC_KEYS = ['project', 'filePath', 'dirty', 'past', 'future', 'time', 'selection', 'selectedKey', 'selectedPart', 'partsOpen', 'editorView', 'camFullView', 'codeClip', 'zoom'] as const;
+export const DOC_KEYS = ['project', 'filePath', 'dirty', 'past', 'future', 'time', 'selection', 'selectedKey', 'selectedPart', 'partsOpen', 'editorView', 'camFullView', 'codeClip', 'zoom', 'zoomFit'] as const;
 export type DocState = Pick<State, (typeof DOC_KEYS)[number]>;
 export const pickDoc = (s: State): DocState => Object.fromEntries(DOC_KEYS.map((k) => [k, s[k]])) as DocState;
 
@@ -167,6 +169,7 @@ export const useStore = create<State>((set, get) => ({
   playing: false,
   loop: true,
   zoom: 90,
+  zoomFit: true,
   meta: null,
   metaProject: null,
   codeOpen: false,
@@ -208,7 +211,7 @@ export const useStore = create<State>((set, get) => ({
     // the project being left stays open in the background (its agent may still be working)
     stashActive(get());
     useSessions.setState({ activeSince: Date.now() });
-    set({ sessionId: newSessionId(), project: normalizeProject(p), filePath: path, dirty: false, past: [], future: [], selection: [], selectedKey: null, selectedPart: null, partsOpen: [], time: 0, playing: false, editorView: null, inspectorFocus: null, codeClip: null, camFullView: true, animPreview: null, meta: null, metaProject: null });
+    set({ sessionId: newSessionId(), project: normalizeProject(p), filePath: path, dirty: false, past: [], future: [], selection: [], selectedKey: null, selectedPart: null, partsOpen: [], time: 0, playing: false, editorView: null, inspectorFocus: null, codeClip: null, camFullView: true, zoomFit: true, animPreview: null, meta: null, metaProject: null });
   },
   markSaved: (path) => set({ filePath: path, dirty: false }),
 

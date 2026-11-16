@@ -3,7 +3,7 @@
 # (the same versions as engine/.venv), ffmpeg and the search model, signed with the Developer ID
 # certificate in the keychain.
 #   packaging/mac/build.sh             → release/mac-arm64/MathStudio.app
-#   packaging/mac/build.sh --install   … and replace /Applications/MathStudio.app with it
+#   packaging/mac/build.sh --install   … and move it to /Applications/MathStudio.app
 #   packaging/mac/build.sh --release   public build, notarized + stapled → release/mac/:
 #       MathStudio-arm64.dmg (download), MathStudio-arm64-mac.zip + .blockmap (in-app updates),
 #       latest-mac.yml (update feed). Upload with scripts/release-mac.sh.
@@ -156,6 +156,8 @@ if [ "$MODE" = "--install" ]; then
   echo "▸ installing to /Applications"
   osascript -e 'tell application "MathStudio" to quit' >/dev/null 2>&1 || true
   rm -rf /Applications/MathStudio.app
-  ditto "$APP" /Applications/MathStudio.app
+  # move, not copy: a second MathStudio.app left in release/ is one more copy Launch Services
+  # can pick for "Open With" / Spotlight (same volume → instant rename)
+  mv "$APP" /Applications/MathStudio.app 2>/dev/null || { ditto "$APP" /Applications/MathStudio.app && rm -rf "$APP"; }
   echo "✓ /Applications/MathStudio.app"
 fi

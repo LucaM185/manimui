@@ -28,5 +28,41 @@ await open(); await win.mouse.click(10, 400); check(!(await isFull()), 'border c
 check(await win.locator('.library .panel-head').count() === 0, 'no "Library" title');
 await open(); check(await isFull(), 'expand button opens');
 await win.mouse.click(b.x + 200, b.y + 200); check(await isFull(), 'click inside stays open');
+
+// Clicking a card (instead of dragging it) flashes a big "Drag to use" hint.
+await win.keyboard.press('Escape');
+await open();
+const card = win.locator('.library.full .lib-card').first();
+await card.click();
+const hint = win.locator('[data-testid=drag-hint]');
+check(await hint.isVisible(), 'click on a card shows the "Drag to use" hint');
+const hb = await win.locator('.drag-hint-title').boundingBox();
+check(hb && hb.height >= 40 && Math.abs(hb.x + hb.width / 2 - b.iw / 2) < 4, `hint is big and centred (h=${hb?.height.toFixed(0)})`);
+check((await win.locator('.drag-hint-title').textContent()) === 'Drag to use', 'hint text');
+await win.screenshot({ path: path.join(OUT, 'libpopup_hint.png') });
+await win.waitForTimeout(1900);
+check(await hint.count() === 0, 'hint fades away by itself');
+const nClips = () => win.evaluate(() => window.__ms.store.getState().project.clips.length);
+const before = await nClips();
+await card.dblclick();
+await win.waitForTimeout(300);
+check(await hint.count() === 0, 'double-click (add) hides the hint');
+check(await nClips() === before + 1, 'double-click still adds the item');
+
+// Dragging a card out of the popup closes it, and the drop on the preview still lands.
+check(await isFull(), 'popup still open after double-click');
+const pv = await win.evaluate(() => { const r = document.querySelector('.stage canvas, .stage img, .stage')?.getBoundingClientRect(); return r && { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+const cbx = await card.boundingBox();
+await win.mouse.move(cbx.x + cbx.width / 2, cbx.y + cbx.height / 2);
+await win.mouse.down();
+await win.mouse.move(cbx.x + cbx.width / 2 + 20, cbx.y + cbx.height / 2 + 20, { steps: 4 });
+await win.waitForTimeout(150);
+check(!(await isFull()), 'starting a drag closes the popup');
+check(await win.locator('.library-backdrop').count() === 0, 'backdrop gone during the drag');
+await win.mouse.move(pv.x, pv.y, { steps: 8 });
+await win.mouse.up();
+await win.waitForTimeout(500);
+check(await nClips() === before + 2, 'drop on the preview adds the item');
+await win.screenshot({ path: path.join(OUT, 'libpopup_dragged.png') });
 await app.close();
 console.log(fails.length ? `FAILED ${fails.length}` : 'ALL PASS'); process.exit(fails.length ? 1 : 0);

@@ -504,8 +504,30 @@ check(abs(m_kz["clips"]["r"].get("rx", 0) + 45) < 1e-6 and abs(m_kz["clips"]["r"
       f"zero-valued z / rx keys beat the static transform: rx {m_kz['clips']['r'].get('rx')} z {m_kz['clips']['r']['z']}")
 
 # camera angles interpolate; 2D projects keep working with angle-less keys
-c_mid = rt.camera_at([{"t": 0, "theta": 0, "phi": 0, "x": 0, "y": 0, "zoom": 1}, {"t": 2, "theta": 90, "phi": 60, "zoom": 2, "ease": "linear"}], 1.0)
-check(abs(c_mid["theta"] - 45) < 1e-6 and abs(c_mid["phi"] - 30) < 1e-6 and abs(c_mid["zoom"] - 1.5) < 1e-6, f"camera angles interpolate {c_mid}")
+def _cam_rot(c):
+    return np.array(rt._cam_basis(c.get("theta", 0), c.get("phi", 0), c.get("gamma", 0)))
+
+
+def _rot_angle(ma, mb):
+    return math.degrees(math.acos(max(-1.0, min(1.0, (np.trace(ma.T @ mb) - 1) / 2))))
+
+
+# the orientation takes the direct (shortest) rotation: halfway is equally far from both keys and
+# on the way, not the per-Euler-angle lerp (theta 45, phi 30) which detours and rolls
+k_a = {"t": 0, "theta": 0, "phi": 0, "x": 0, "y": 0, "zoom": 1}
+k_b = {"t": 2, "theta": 90, "phi": 60, "zoom": 2, "ease": "linear"}
+c_mid = rt.camera_at([k_a, k_b], 1.0)
+ra, rb, rm = _cam_rot(k_a), _cam_rot(k_b), _cam_rot(c_mid)
+check(abs(_rot_angle(ra, rm) - _rot_angle(ra, rb) / 2) < 1e-6 and abs(_rot_angle(rm, rb) - _rot_angle(ra, rb) / 2) < 1e-6
+      and abs(c_mid["zoom"] - 1.5) < 1e-6, f"camera angles take the direct rotation {c_mid}")
+# Front → Top (Y-up views): halfway the eye is 45° up the arc, never swung out sideways
+c_ft = rt.camera_at([{"t": 0, "x": 0, "y": 0, "zoom": 1}, {"t": 2, "theta": 180, "phi": 90, "gamma": 180, "zoom": 1, "ease": "linear"}], 1.0)
+out_ft = _cam_rot(c_ft)[:, 2]
+check(np.allclose(out_ft, [0, math.sqrt(0.5), math.sqrt(0.5)], atol=1e-6), f"front → top camera rises straight up {out_ft}")
+# keys keep their exact angles, and 2D (phi 0) keys still lerp, so deliberate roll spins survive
+check(rt.camera_at([k_a, k_b], 2.0)["theta"] == 90, "camera at a key = the key's own angles")
+c_spin = rt.camera_at([{"t": 0, "x": 0, "y": 0, "zoom": 1}, {"t": 2, "theta": 360, "zoom": 1, "ease": "linear"}], 1.0)
+check(abs(c_spin["theta"] - 180) < 1e-6, f"2D camera roll 0 → 360 still spins {c_spin['theta']}")
 check(rt.camera_at([{"t": 0, "x": 1, "y": 2, "zoom": 1}], 0)["phi"] == 0, "2D keys default to a flat camera")
 
 # a sphere looks different when the camera tilts (shading), and the projection keeps it centred
