@@ -159,7 +159,7 @@ await S(() => {
   });
   st.set({ selection: ['ct'], rightTab: 'inspector' });
 });
-await win.waitForSelector('.ins-section h5');
+await win.waitForSelector('.ins-section');
 // open the Parameters section if collapsed
 const paramsOpen = await win.$('[data-testid=param-font_size]');
 if (!paramsOpen) {

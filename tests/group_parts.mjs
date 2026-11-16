@@ -164,21 +164,16 @@ b = await box('.part-bar[data-clip-part="grp"][data-part="2"]');
 await win.mouse.click(b.x + b.w - 30, b.y + b.h / 2);
 let sp = await S(() => window.__ms.store.getState().selectedPart);
 check(sp?.clip === 'grp' && sp.path === '2', `part selected (${JSON.stringify(sp)})`);
-ok = await waitFor(() => !!document.querySelector('[data-testid=part-edit]'), null, 4000);
-check(ok, 'inspector opens the Parts section on that part');
+check(!(await win.$('[data-section=parts]')), 'no Parts section in the inspector (parts are edited on the timeline)');
 ok = await waitFor(() => !!document.querySelector('[data-testid=part-outline]'), null, 4000);
 check(ok, 'preview outlines the part');
 const ol = await box('[data-testid=part-outline] rect');
 const sel = await box('.sel-box');
 check(ol && sel && ol.x > sel.x + sel.w * 0.55 && ol.w < sel.w * 0.45, `outline sits on the triangle (right third of the clip box)`);
-// edit appear time from the inspector
-await win.fill('[data-testid=part-at] input', '2.5').catch(async () => {
-  const inp = await win.$('[data-testid=part-at]');
-  if (inp) { await inp.fill('2.5'); }
-});
-await win.keyboard.press('Enter');
+// set its appear time (the bar's left edge is the UI for this, tested above)
+await S(() => window.__ms.store.getState().commit((p) => { const g = p.clips.find((x) => x.id === 'grp'); g.parts = { ...g.parts, '2': { ...(g.parts?.['2'] || {}), at: 2.5 } }; }));
 c = await clipOf('grp');
-check(near(c.parts['2'].at, 2.5, 0.01), `inspector "Appears" sets the time (${c.parts['2'].at})`);
+check(near(c.parts['2'].at, 2.5, 0.01), `part appears at 2.5s (${c.parts['2'].at})`);
 await shot('3-inspector.png', 'body');
 
 // ------------------------------------------------------------------ hide with ⌫, undo

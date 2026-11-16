@@ -1,4 +1,4 @@
-// Settings tab: OpenRouter key (save / validate / test / remove) and preview quality (persisted,
+// Settings popup (top-bar Settings icon): OpenRouter key (save / validate / test / remove) and preview quality (persisted,
 // caps the preview resolution).   node tests/settings.mjs   (free: the key check is mocked)
 // MS_APP=/path/to/packaged/binary runs the same checks against a packaged build.
 import { _electron as electron } from 'playwright';
@@ -43,18 +43,19 @@ const frameW = async (win, { min = 0, max = Infinity } = {}) => {
 
 {
   const { app, win } = await launch();
-  await win.click('[data-testid=right-tab-settings]');
+  await win.click('[data-testid=tb-settings]');
   await win.waitForSelector('[data-testid=settings-panel]');
-  check(await S(win, () => window.__ms.store.getState().rightTab === 'settings'), 'Settings tab opens');
+  check(await S(win, () => window.__ms.store.getState().settingsOpen), 'Settings popup opens from the top-bar icon');
   await win.waitForFunction(() => !!window.__ms.store.getState().gl, null, { timeout: 30000 });
   const gl = await S(win, () => window.__ms.store.getState().gl);
   check(!!gl.renderer, `engine reports its GL renderer (${gl.renderer}, software=${gl.software})`);
   await win.waitForTimeout(400);
-  check(/GPU rendering|Software rendering/.test(await win.textContent('[data-testid=settings-gl]')), 'renderer shown in the panel');
+  check(/^(GPU|CPU) · /.test(await win.textContent('[data-testid=settings-gl]')), 'renderer shown in the panel');
   const ks0 = await win.textContent('[data-testid=settings-key-state]');
   console.log('     initial key state:', ks0.trim());
 
   // invalid key is refused
+  if (!(await win.$('[data-testid=settings-key-input]'))) await win.click('[data-testid=settings-key-change]'); // a key from env/.env
   await win.fill('[data-testid=settings-key-input]', 'not a key');
   await win.click('[data-testid=settings-key-save]');
   await win.waitForSelector('[data-testid=settings-key-error]');
@@ -63,23 +64,28 @@ const frameW = async (win, { min = 0, max = Infinity } = {}) => {
   // save a key → stored, masked, used by the agent, test passes
   await win.fill('[data-testid=settings-key-input]', GOOD);
   await win.click('[data-testid=settings-key-save]');
-  await win.waitForFunction(() => /saved in Settings/.test(document.querySelector('[data-testid=settings-key-state]')?.textContent || ''));
+  await win.waitForSelector('[data-testid=settings-key-remove]');
   const stored = JSON.parse(fs.readFileSync(SETTINGS, 'utf8'));
   check(stored.openrouterKey === GOOD, 'key written to settings.json');
   // (POSIX modes mean nothing on Windows: there the file is private by its place in the user profile)
   if (process.platform !== 'win32') check((fs.statSync(SETTINGS).mode & 0o077) === 0, 'settings.json is owner-only (0600)');
   const shown = await win.textContent('[data-testid=settings-key-state]');
   check(!shown.includes(GOOD) && shown.includes('sk-or-') && shown.includes('cdef'), `key shown masked (${shown.trim()})`);
-  check(await win.inputValue('[data-testid=settings-key-input]') === '', 'input cleared after save');
+  check(!(await win.$('[data-testid=settings-key-input]')), 'input hidden once a key is saved');
   await win.waitForSelector('[data-testid=settings-key-test-result]');
   check(/Key works/.test(await win.textContent('[data-testid=settings-key-test-result]')), 'saving runs the key test → ok');
   check((await S(win, () => window.studio.ai.status())).configured, 'agent sees the key (ai:status configured)');
-  // testing a different, wrong key in the box
+  // Change → a wrong key is saved, then its test reports it rejected; Change back to the good one
+  await win.click('[data-testid=settings-key-change]');
   await win.fill('[data-testid=settings-key-input]', 'sk-or-v1-wrong-key-123456');
-  await win.click('[data-testid=settings-key-test]');
+  await win.click('[data-testid=settings-key-save]');
   await win.waitForFunction(() => /rejected/.test(document.querySelector('[data-testid=settings-key-test-result]')?.textContent || ''));
-  check(true, 'testing a wrong key reports it rejected');
-  await win.fill('[data-testid=settings-key-input]', '');
+  check(true, 'a wrong key reports it rejected');
+  await win.click('[data-testid=settings-key-change]');
+  await win.fill('[data-testid=settings-key-input]', GOOD);
+  await win.click('[data-testid=settings-key-save]');
+  await win.waitForFunction(() => /Key works/.test(document.querySelector('[data-testid=settings-key-test-result]')?.textContent || ''));
+  check(true, 'Change → good key works again');
   await shot(win, 'settings_key.png');
 
   // quality: Low caps the preview, persisted
@@ -89,23 +95,26 @@ const frameW = async (win, { min = 0, max = Infinity } = {}) => {
   check(wLow <= 960, `Low caps the idle preview at 960 px (got ${wLow})`);
   check(wHigh > wLow, `High renders larger than Low (${wHigh} > ${wLow})`);
   check(JSON.parse(fs.readFileSync(SETTINGS, 'utf8')).quality === 'low', 'quality saved to settings.json');
-  check(/960 px wide when still/.test(await win.textContent('[data-testid=settings-quality-now]')), 'panel states the active caps');
+  check(/960 px/.test(await win.textContent('[data-testid=settings-quality-now]')), 'popup states the active cap');
   await shot(win, 'settings_quality.png');
-  // narrow right column: tabs still fit
+  // small window: the popup fits, Escape closes it
   await win.setViewportSize({ width: 1280, height: 800 });
   await win.waitForTimeout(400);
-  const tabs = await win.$eval('.right-tabs', (el) => ({ sw: el.scrollWidth, cw: el.clientWidth }));
-  check(tabs.sw <= tabs.cw + 1, `right tabs fit without overflow (${tabs.sw} ≤ ${tabs.cw})`);
+  const dlg = await win.$eval('[data-testid=settings-panel]', (el) => { const r = el.getBoundingClientRect(); return { h: r.height, sw: el.scrollWidth, cw: el.clientWidth }; });
+  check(dlg.h < 420 && dlg.sw <= dlg.cw + 1, `compact popup, no overflow (${JSON.stringify(dlg)})`);
   await shot(win, 'settings_narrow.png');
+  await win.keyboard.press('Escape');
+  await win.waitForTimeout(200);
+  check(!(await S(win, () => window.__ms.store.getState().settingsOpen)), 'Escape closes Settings');
   await app.close();
 }
 {
   const { app, win } = await launch();
   check(await S(win, () => window.__ms.store.getState().renderQuality) === 'low', 'quality restored on relaunch');
-  await win.click('[data-testid=right-tab-settings]');
+  await win.click('[data-testid=tb-settings]');
   await win.waitForSelector('[data-testid=settings-key-remove]');
   await win.click('[data-testid=settings-key-remove]');
-  await win.waitForFunction(() => !/saved in Settings/.test(document.querySelector('[data-testid=settings-key-state]')?.textContent || ''));
+  await win.waitForSelector('[data-testid=settings-key-remove]', { state: 'detached' });
   check(!('openrouterKey' in JSON.parse(fs.readFileSync(SETTINGS, 'utf8'))), 'Remove deletes the stored key');
   await win.click('[data-testid=settings-quality-auto]');
   await win.waitForTimeout(300);

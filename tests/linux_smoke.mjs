@@ -98,7 +98,7 @@ if (hasLatex) check(!terr, 'Equation renders with the system LaTeX');
 else check(/LaTeX/i.test(terr) && /apt|MiKTeX|install/i.test(terr), `Equation without LaTeX explains the fix: "${terr.slice(0, 160)}"`);
 
 // settings tab
-await win.click('[data-testid=right-tab-settings]');
+await win.click('[data-testid=tb-settings]');
 await win.waitForSelector('[data-testid=settings-panel]');
 await win.waitForTimeout(500);
 await win.screenshot({ path: path.join(OUT, `${TAG}_settings.png`) });

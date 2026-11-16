@@ -74,7 +74,7 @@ const launch = async (extra = {}) => {
   return { app, win };
 };
 const openSettings = async (win) => {
-  await win.click('[data-testid=right-tab-settings]');
+  await win.click('[data-testid=tb-settings]');
   await win.waitForSelector('[data-testid=settings-updates]');
   await win.locator('[data-testid=settings-updates]').scrollIntoViewIfNeeded();
 };
@@ -139,10 +139,10 @@ try {
     const { app, win } = await launch({ MATHSTUDIO_UPDATE_URL: URL_, MATHSTUDIO_UPDATE_DELAY_MS: '1500' });
     await win.waitForFunction(() => /MathStudio 9\.2\.0 is available/.test(document.body.innerText), null, { timeout: 30000 });
     check(true, 'toast "MathStudio 9.2.0 is available"');
-    check(await win.isVisible('[data-testid=update-dot]'), 'dot on the Settings tab');
+    check(await win.isVisible('[data-testid=update-dot]'), 'dot on the Settings icon');
     await win.click('.toast >> text=View');
     await win.waitForSelector('[data-testid=settings-updates]');
-    check(await S(win, () => window.__ms.store.getState().rightTab === 'settings'), 'toast "View" opens Settings');
+    check(await S(win, () => window.__ms.store.getState().settingsOpen), 'toast "View" opens Settings');
     check(!(await win.isVisible('[data-testid=update-dot]')), 'dot hidden while Settings is open');
     check((await stateOf(win)) === 'available', 'panel already shows the update');
     await app.close();

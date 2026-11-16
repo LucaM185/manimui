@@ -257,7 +257,7 @@ export default function AgentPanel() {
             <KeyRound size={16} />
             <div>
               <b>Add your OpenRouter key</b>
-              <p>The agent runs on OpenRouter. Paste your key in <a onClick={() => useStore.setState({ rightTab: 'settings' })} data-testid="agent-open-settings">Settings</a>, then <a onClick={() => refreshStatus()}>check again</a>.</p>
+              <p>The agent runs on OpenRouter. Paste your key in <a onClick={() => useStore.setState({ settingsOpen: true })} data-testid="agent-open-settings">Settings</a>, then <a onClick={() => refreshStatus()}>check again</a>.</p>
             </div>
           </div>
         )}

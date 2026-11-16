@@ -89,7 +89,6 @@ await settle();
 const h0 = (await meta()).clips.sum.h;
 
 console.log('\n▶ Parameters of a custom-code clip are read from the code');
-await win.click('[data-section=params] h5');
 check(await knobsReady(), 'knobs load');
 check(!(await win.isVisible('text=parameters are detached')), 'no more "detached from the template" dead end');
 const val = (sel) => win.inputValue(sel).catch(() => null);
@@ -183,23 +182,12 @@ await win.click('[data-testid=param-unlink-font_size]');
 await waitFor(() => /\nfs = 40\n/.test(window.__ms.store.getState().project.clips.find((c) => c.id === 'sum').code), null, 3000);
 check((await code()).includes('\nfs = 40\n'), 'unlink writes the value back');
 
-console.log('\n▶ Style of one part (Parts section): only that part changes');
+console.log('\n▶ Style of one selected part (top of the parameters): only that part changes');
 await knobsReady();
-await win.click('[data-section=parts] h5').catch(() => {});
-const ovfPath = await (async () => {
-  for (let i = 0; i < 40; i++) {
-    const path_ = await S(() => {
-      const el = document.querySelector('[data-section=parts]');
-      return el ? 'x' : null;
-    });
-    if (path_) break;
-    await win.waitForTimeout(250);
-  }
-  return '2'; // items = [plus, line, ovf, ...]
-})();
+const ovfPath = '2'; // items = [plus, line, ovf, ...]
 await S((pp) => window.__ms.store.setState({ selectedPart: { clip: 'sum', path: pp } }), ovfPath);
 let ok = await waitFor(() => !!document.querySelector('[data-testid=part-style]'), null, 8000);
-check(ok, 'the part card has a Style block for “ovf”');
+check(ok, 'selecting “ovf” shows its Style block');
 if (ok) {
   await shot('3-part-style.png');
   await win.fill('[data-testid=part-knob-font_size] input', '30');

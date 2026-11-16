@@ -104,15 +104,17 @@ await S(([t0, t1, mk]) => {
   });
   window.__ms.store.setState({ selection: ['circ'] });
 }, [tracks[0], tracks[1], clip.toString()]);
-await S(() => window.__ms.revealInspector?.('circ', 'exit'));
-await win.click('.clip[data-clip="circ"]', { position: { x: 20, y: 10 } });
-// open the Animate tab's exit section
-const tab = await win.$('text=/^Animat/i');
-if (tab) await tab.click();
-const h5 = await win.$('h5:has-text("Exit animation")');
-if (h5 && !(await win.$('.field.select:has(label:text-is("Into"))'))) await h5.click();
-await win.waitForSelector('.field.select:has(label:text-is("Into")) select', { timeout: 10000 });
-await win.selectOption('.field.select:has(label:text-is("Into")) select', 'sq');
+// link the morph target (what the old inspector "Into" field did; the UI now creates morphs with "Add transform here")
+await S(() => window.__ms.store.getState().commit((p) => {
+  const { joinMorphTrack, resolveOverlap, round } = window.__ms.ops;
+  const c = p.clips.find((x) => x.id === 'circ');
+  const t = p.clips.find((x) => x.id === 'sq');
+  c.exit = { ...c.exit, target: 'sq' };
+  t.start = round(c.start + c.duration, 3);
+  t.enter = { ...t.enter, type: 'none' };
+  joinMorphTrack(p, c, t);
+  resolveOverlap(p, t.id);
+}));
 let p = await S(() => window.__ms.store.getState().project);
 const sq = p.clips.find((c) => c.id === 'sq');
 check(sq.track === tracks[0], `target moved onto the morphing clip's track (${sq.track})`);

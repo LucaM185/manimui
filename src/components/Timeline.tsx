@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { editClipCode, revealInspector, useStore, itemById } from '../store';
 import { addAsset, addItem, addTransformAt, canCutAt, clipsCuttableAt, deleteSelection, duplicateSelection, hidePart, importFiles, removeTransform, selectTransform, splitAtPlayhead, splitClipsAt, transformPlan } from '../actions';
 import { DND_ASSET, DND_ITEM } from './Library';
-import { addKeyAt, CAMERA_ID, setCameraAt, CATEGORY_COLORS, clone, insertTrack, morphSelId, emptyTrackIds, overlaps, removeEmptyTrailingTracks, removeEmptyTracks, resolveOverlap, round, uid } from '../ops';
+import { CAMERA_ID, setCameraAt, CATEGORY_COLORS, clone, insertTrack, morphSelId, emptyTrackIds, overlaps, removeEmptyTrailingTracks, removeEmptyTracks, resolveOverlap, round, uid } from '../ops';
 import type { Clip, PartNode, Project } from '../types';
 import { cachedParts, findNode, hasOffset, isGroupTree, openKey, partName, partRows, partTiming, partWindows, resetPart, setPart, shiftParts, staggerParts, timedParts, useClipPartsMap, type PartRow } from '../parts';
 import ContextMenu, { MenuItem } from './ContextMenu';
@@ -11,7 +11,7 @@ import { AnimIcon, CategoryIcon } from '../icons';
 import { AnimPopover, type AnchorRect } from './AnimPicker';
 import CamKeyPreview from './CamKeyPreview';
 import {
-  AlertTriangle, Camera, ChevronDown, ChevronRight, Code2, Copy, Eye, EyeOff, GripVertical, KeyRound, Layers, ListTree, Lock, Maximize, Minus, Move, Plus, RotateCcw, Scissors, Shuffle, Sparkles, Timer, Trash2, Unlock,
+  AlertTriangle, Camera, ChevronDown, ChevronRight, Code2, Copy, Eye, EyeOff, GripVertical, Layers, ListTree, Lock, Maximize, Minus, Move, Plus, RotateCcw, Scissors, Shuffle, Sparkles, Timer, Trash2, Unlock,
 } from 'lucide-react';
 
 const LANE_H = 64;
@@ -47,6 +47,7 @@ type DragState =
   | { kind: 'roll'; sx: number; a0: Clip; b0: Clip }
   | { kind: 'key'; id: string; key: string; sx: number; t0: number; moved: boolean }
   | { kind: 'effect'; id: string; eff: string; sx: number; at0: number; moved: boolean; anchor: AnchorRect }
+  | { kind: 'effect-r'; id: string; eff: string; sx: number; d0: number }
   | { kind: 'scrub' }
   | { kind: 'end'; sx: number; d0: number }
   | { kind: 'track'; id: string; sy: number; index0: number }
@@ -259,6 +260,14 @@ export default function Timeline() {
     }
     useStore.setState({ playing: false });
     if (role !== 'effect' && role !== 'body') setAnimPop(null);
+    if (role === 'effect-r') {
+      const eff = (e.target as HTMLElement).closest<HTMLElement>('[data-eff]')!.dataset.eff!;
+      const ef = c.effects.find((x) => x.id === eff)!;
+      st.checkpoint();
+      setAnimPop(null);
+      startDrag(e, { kind: 'effect-r', id: c.id, eff, sx: e.clientX, d0: ef.duration });
+      return;
+    }
     if (role === 'key') {
       const key = (e.target as HTMLElement).dataset.key!;
       const k = c.keys.find((k) => k.id === key)!;
@@ -560,6 +569,17 @@ export default function Timeline() {
         }, { transient: true });
         break;
       }
+      case 'effect-r': {
+        const c = st.project.clips.find((c) => c.id === drag.id);
+        const ef = c?.effects.find((x) => x.id === drag.eff);
+        if (!c || !ef) return;
+        const nd = Math.max(0.1, Math.min(c.duration - ef.at, drag.d0 + dt));
+        st.commit((pr) => {
+          const x = pr.clips.find((x) => x.id === drag.id)?.effects.find((x) => x.id === drag.eff);
+          if (x) x.duration = round(nd, 3);
+        }, { transient: true });
+        break;
+      }
       case 'part-move':
       case 'part-l':
       case 'part-r':
@@ -665,11 +685,11 @@ export default function Timeline() {
       const z = drag.zone;
       if (z && !samePop(cur, drag.id, z.kind, undefined, drag.path)) setAnimPop({ clip: drag.id, kind: z.kind, part: drag.path, anchor: z.anchor });
       else setAnimPop(null);
-      if (!z) revealInspector(drag.id, 'parts');
     }
     if (drag.kind === 'effect' && !drag.moved) {
-      setAnimPop(null);
-      revealInspector(drag.id, 'effects', drag.eff);
+      const cur = animPopRef.current;
+      if (cur?.kind === 'effect' && cur.clip === drag.id && cur.eff === drag.eff) setAnimPop(null);
+      else setAnimPop({ clip: drag.id, kind: 'effect', eff: drag.eff, anchor: drag.anchor });
     }
     setDrag(null);
     setSnapLine(null);
@@ -729,15 +749,6 @@ export default function Timeline() {
       x: e.clientX,
       y: e.clientY,
       items: [
-        ...(group || nParts || nMoved
-          ? [
-              { label: partsOpen.includes(c.id) ? 'Hide parts' : `Show parts (${tree?.children?.length ?? '…'})`, icon: <ListTree size={14} />, action: () => togglePartsOpen(c.id) },
-              ...(group ? [staggerItem(c, '')] : []),
-              { label: 'Reset part timing', icon: <RotateCcw size={14} />, disabled: !nParts, action: () => st.commit((p) => { const cc = p.clips.find((x) => x.id === c.id); if (cc) resetPart(cc, '', true); }) },
-              ...(nMoved ? [{ label: `Put moved parts back (${nMoved})`, icon: <RotateCcw size={14} />, action: () => st.commit((p) => { const cc = p.clips.find((x) => x.id === c.id); if (cc) resetPart(cc, '', true, 'position'); }) } as MenuItem] : []),
-              { sep: true } as MenuItem,
-            ]
-          : []),
         {
           label: plan ? `Add transform here (${plan.t.toFixed(2)}s)` : 'Add transform here',
           icon: <Shuffle size={14} />,
@@ -745,10 +756,7 @@ export default function Timeline() {
           disabled: !plan,
           action: () => addTransformAt(c.id, at),
         },
-        { sep: true },
-        { label: 'Duplicate', icon: <Copy size={14} />, shortcut: '⌘D', action: duplicateSelection },
-        { label: 'Blade at playhead', icon: <Scissors size={14} />, shortcut: '⌘B', action: () => splitAtPlayhead(), disabled: !canCutAt(c, st.time) },
-        { label: 'Add keyframe at playhead', icon: <KeyRound size={14} />, shortcut: 'K', action: () => st.commit((p) => { const cc = p.clips.find((x) => x.id === c.id); if (cc) addKeyAt(cc, st.time - cc.start, fps); }) },
+        { label: 'Split at playhead', icon: <Scissors size={14} />, shortcut: '⌘B', action: () => splitAtPlayhead(), disabled: !canCutAt(c, st.time) },
         {
           label: 'Add effect at playhead',
           icon: <Sparkles size={14} />,
@@ -764,7 +772,10 @@ export default function Timeline() {
               }),
           })),
         },
-        { label: 'Move to new track above', icon: <Layers size={14} />, action: () => st.commit((p) => { const cc = p.clips.find((x) => x.id === c.id); if (!cc) return; const t = insertTrack(p, trackIdx[cc.track]); cc.track = t.id; }) },
+        ...(group ? [staggerItem(c, '')] : []),
+        ...(nParts || nMoved ? [{ label: 'Reset parts', icon: <RotateCcw size={14} />, action: () => st.commit((p) => { const cc = p.clips.find((x) => x.id === c.id); if (cc) resetPart(cc, '', true, 'all'); }) } as MenuItem] : []),
+        { sep: true },
+        { label: 'Duplicate', icon: <Copy size={14} />, shortcut: '⌘D', action: duplicateSelection },
         { label: 'Edit code', icon: <Code2 size={14} />, action: () => editClipCode(c.id) },
         { sep: true },
         { label: 'Delete', icon: <Trash2 size={14} />, shortcut: '⌫', danger: true, action: deleteSelection },
@@ -817,14 +828,10 @@ export default function Timeline() {
       items: [
         { label: `Enter animation`, icon: <AnimIcon id={tm.enter.type} size={14} />, submenu: animSub('enter') },
         { label: `Exit animation`, icon: <AnimIcon id={tm.exit.type} size={14} />, submenu: animSub('exit') },
-        { label: `Appear at playhead (${st.time.toFixed(2)}s)`, disabled: u < 0 || u >= tm.until, action: () => edit((cc) => setPart(cc, node.path, { at: Math.max(0, u) })) },
-        { label: `Leave at playhead (${st.time.toFixed(2)}s)`, disabled: u <= tm.at || u > c.duration, action: () => edit((cc) => setPart(cc, node.path, { until: u >= c.duration ? null : u })) },
-        ...(node.children?.length ? [{ sep: true } as MenuItem, staggerItem(c, node.path)] : []),
+        ...(node.children?.length ? [staggerItem(c, node.path)] : []),
         { sep: true },
-        { label: 'Reset timing (follow the clip)', icon: <RotateCcw size={14} />, disabled: !tm.own, action: () => edit((cc) => resetPart(cc, node.path)) },
-        ...(node.children?.length ? [{ label: 'Reset timing of everything inside', disabled: !Object.keys(c.parts || {}).some((p) => p.startsWith(node.path + '.')), action: () => edit((cc) => resetPart(cc, node.path, true)) } as MenuItem] : []),
-        ...(hasOffset(c.parts?.[node.path]) || Object.entries(c.parts || {}).some(([p, s]) => p.startsWith(node.path + '.') && hasOffset(s))
-          ? [{ label: 'Put back in place', icon: <Move size={14} />, action: () => edit((cc) => resetPart(cc, node.path, true, 'position')) } as MenuItem]
+        ...(tm.own || Object.keys(c.parts || {}).some((p) => p.startsWith(node.path + '.')) || hasOffset(c.parts?.[node.path])
+          ? [{ label: 'Reset this part', icon: <RotateCcw size={14} />, action: () => edit((cc) => resetPart(cc, node.path, true, 'all')) } as MenuItem]
           : []),
         { label: 'Hide this part', icon: <EyeOff size={14} />, shortcut: '⌫', action: () => hidePart(c.id, node.path) },
       ],
@@ -1324,13 +1331,14 @@ function ClipAnimPopover({ pop, onClose }: { pop: AnimPop; onClose: () => void }
   const effect = pop.kind === 'effect' ? clip?.effects.find((x) => x.id === pop.eff) : undefined;
   const ptm = clip && pop.part !== undefined ? partTiming(clip, pop.part) : null;
   const value = ptm ? (pop.kind === 'enter' ? ptm.enter.type : ptm.exit.type) : pop.kind === 'enter' ? clip?.enter.type : pop.kind === 'exit' ? clip?.exit.type : effect?.type;
-  const gone = !clip || !anims || !value || (pop.kind !== 'effect' && value === 'none');
+  const gone = !clip || !anims || !value;
   useEffect(() => {
     if (gone) onClose();
   }, [gone]);
   if (gone) return null;
   let options = pop.kind === 'enter' ? anims.enter : pop.kind === 'exit' ? anims.exit : anims.effects;
-  if (ptm) options = options.filter((o) => o.id !== 'TransformInto' && o.id !== 'TransformMatching');
+  // morphs are made with "Add transform here", which also creates the clip it becomes
+  if (pop.kind === 'exit') options = options.filter((o) => o.id !== 'TransformInto' && o.id !== 'TransformMatching');
   const what = pop.kind === 'enter' ? 'Enter animation' : pop.kind === 'exit' ? 'Exit animation' : 'Effect';
   const tree = cachedParts(clip);
   const partLabel = ptm && pop.part !== undefined ? (() => { const n = findNode(tree, pop.part!); return n ? partName(n) : `part ${pop.part}`; })() : '';
@@ -1356,8 +1364,6 @@ function ClipAnimPopover({ pop, onClose }: { pop: AnimPop; onClose: () => void }
         if (x) x.type = v;
       }
     });
-    // morphs need a target clip, which is picked in the inspector
-    if (pop.kind === 'exit' && (v === 'TransformInto' || v === 'TransformMatching')) revealInspector(pop.clip, 'exit');
   };
   return (
     <AnimPopover
@@ -1371,6 +1377,13 @@ function ClipAnimPopover({ pop, onClose }: { pop: AnimPop; onClose: () => void }
       onClose={onClose}
       ignore={() => document.querySelector(pop.part !== undefined ? `.part-bar[data-clip-part="${pop.clip}"][data-part="${pop.part}"]` : `.clip[data-clip="${pop.clip}"]`)}
       testid="tl-anim"
+      onRemove={pop.kind === 'effect' ? () => {
+        useStore.getState().commit((p) => {
+          const c = p.clips.find((x) => x.id === pop.clip);
+          if (c) c.effects = c.effects.filter((x) => x.id !== pop.eff);
+        });
+        onClose();
+      } : undefined}
       clipId={pop.clip}
       effId={pop.eff}
       part={pop.part}
@@ -1428,6 +1441,12 @@ function ClipView({ c, top, height, zoom, selected, selectedKey, error, conflict
           <div className="anim-handle right" data-role="enter" title="Drag to change the enter duration" />
         </div>
       )}
+      {ed === 0 && (
+        <span className="anim-add l" data-zone="enter" data-testid="add-enter" title="Add an enter animation"><Plus size={10} /></span>
+      )}
+      {xd === 0 && !c.exit.target && (
+        <span className="anim-add r" data-zone="exit" data-testid="add-exit" title="Add an exit animation"><Plus size={10} /></span>
+      )}
       {xd > 0 && !morph && (
         <div className="clip-exit" data-zone="exit" style={{ width: xd * scale * zoom }} title={`Exit: ${labelFor(c.exit.type, anims?.exit)} — click to change`}>
           <span className="anim-chip"><AnimIcon id={c.exit.type} size={11} /></span>
@@ -1458,9 +1477,10 @@ function ClipView({ c, top, height, zoom, selected, selectedKey, error, conflict
           data-role="effect"
           data-eff={ef.id}
           style={{ left: ef.at * zoom, width: Math.max(12, ef.duration * zoom) }}
-          title={`${labelFor(ef.type, anims?.effects)} — drag to move, click to edit in the inspector`}
+          title={`${labelFor(ef.type, anims?.effects)} — click to change or remove, drag to move, drag its right edge to change its length`}
         >
           <AnimIcon id={ef.type} size={9} />
+          <div className="eff-handle" data-role="effect-r" />
         </div>
       ))}
       {c.keys.map((k) => (

@@ -26,6 +26,13 @@ export default function ExportDialog() {
     if (status?.status === 'running') return;
     useStore.setState({ exportOpen: false });
   };
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
 
   const start = async () => {
     const out = await window.studio.chooseExportPath(project.settings.name || 'MathStudio', format);

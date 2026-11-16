@@ -1,4 +1,4 @@
-// Preview render quality (Settings tab). ManimGL renders every preview frame with OpenGL; on a
+// Preview render quality (Settings popup). ManimGL renders every preview frame with OpenGL; on a
 // machine without a usable GPU driver that is Mesa's llvmpipe on the CPU, where cost grows with
 // the pixel count — so the presets cap the preview resolution. Exports always use the export
 // dialog's resolution.

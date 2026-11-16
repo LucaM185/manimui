@@ -84,7 +84,7 @@ check(/^Saved v3 · Removed Ball/.test(t), `v3 summary (${t})`);
 check(await clipNames() === 'Box', 'v3 = just Box');
 
 console.log('▸ history view');
-await win.click('[data-testid=projects-btn]');
+await win.click('[data-testid=tb-projects]');
 await win.waitForSelector(`[data-testid=project-card][data-path="${P}"]`);
 check((await win.textContent(`[data-testid=project-card][data-path="${P}"] [data-testid=project-versions]`)).includes('v3'), 'card shows the version count');
 await win.click(`[data-testid=project-card][data-path="${P}"] [data-testid=project-more]`);
@@ -139,7 +139,7 @@ check(await clipNames() === 'Box', `⌘Z undoes the restore (${await clipNames()
 await win.waitForTimeout(1200);
 
 console.log('▸ changes since last version → restore records them first');
-await win.click('[data-testid=projects-btn]');
+await win.click('[data-testid=tb-projects]');
 await win.click(`[data-testid=project-card][data-path="${P}"] [data-testid=project-more]`);
 await win.click('.ctx-menu >> text=/See history/');
 await win.waitForSelector('[data-testid=history-row]');

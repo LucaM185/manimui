@@ -1,6 +1,6 @@
 import { cutParts, setPart } from './parts';
 import { useStore, itemById, revealInspector } from './store';
-import { importAsset, renderFrame } from './engine';
+import { fetchClipSource, importAsset, renderFrame } from './engine';
 import type { Clip, LibraryItem, Project } from './types';
 import {
   addKeyAt,
@@ -11,6 +11,7 @@ import {
   normalizeProject,
   resolveOverlap,
   round,
+  trackIsFree,
   uid,
   morphSelId,
   selectedMorph,
@@ -163,6 +164,173 @@ export function duplicateSelection() {
     }
   });
   useStore.setState({ selection: newIds });
+}
+
+// --------------------------------------------------------------------- group (VGroup)
+const isMorphExit = (c: Clip) => !!c.exit.target && (c.exit.type === 'TransformInto' || c.exit.type === 'TransformMatching');
+
+/** Why the selected clips can't be grouped, or null when they can. */
+export function groupProblem(ids: string[], p: Project = S().project): string | null {
+  const sel = p.clips.filter((c) => ids.includes(c.id));
+  if (sel.length < 2) return 'Select at least two clips to group';
+  const set = new Set(sel.map((c) => c.id));
+  if (sel.some(isMorphExit) || p.clips.some((c) => isMorphExit(c) && set.has(c.exit.target!)))
+    return 'A selected clip transforms into another one — remove the transform first';
+  if (sel.some((c) => p.tracks.find((t) => t.id === c.track)?.locked)) return 'A selected clip is on a locked track';
+  if (new Set(sel.map((c) => !!c.fixed)).size > 1) return 'Some clips are pinned to the screen and some are not';
+  return null;
+}
+
+const PY_KEYWORDS = new Set('False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield t a self place_part group_of part_time VGroup Group'.split(' '));
+const num = (v: number) => {
+  const r = round(v || 0, 4);
+  return String(Object.is(r, -0) ? 0 : r);
+};
+
+/**
+ * Group the selected clips into one clip: its code builds every element (each in its own function,
+ * placed where it was) and returns them as a VGroup. Each element becomes a part of the group that
+ * keeps its own start, end and enter / exit animation, so nothing changes on screen or in time.
+ */
+export async function groupSelection() {
+  const st = S();
+  const ids = st.selection.filter((id) => st.project.clips.some((c) => c.id === id));
+  const problem = groupProblem(ids);
+  if (problem) {
+    st.toast(problem, 'error');
+    return;
+  }
+  const p0 = st.project;
+  const trackIdx = (c: Clip) => p0.tracks.findIndex((t) => t.id === c.track);
+  // back to front: the last track is drawn first, so the group keeps the same stacking
+  const sel = p0.clips.filter((c) => ids.includes(c.id)).sort((a, b) => trackIdx(b) - trackIdx(a) || a.start - b.start);
+  let sources: { code: string; dynamic: boolean }[];
+  try {
+    sources = await Promise.all(sel.map((c) => fetchClipSource(c)));
+  } catch (e: any) {
+    st.toast(`Couldn't group: ${e?.message || e}`, 'error');
+    return;
+  }
+  if (S().project !== p0) {
+    S().toast('The project changed while grouping — try again', 'error');
+    return;
+  }
+
+  const start = Math.min(...sel.map((c) => c.start));
+  const end = Math.max(...sel.map((c) => c.start + c.duration));
+  const xs = sel.map((c) => c.transform.x), ys = sel.map((c) => c.transform.y), zs = sel.map((c) => c.transform.z || 0);
+  const mid = (v: number[]) => round((Math.min(...v) + Math.max(...v)) / 2, 3);
+  const origin = { x: mid(xs), y: mid(ys), z: mid(zs) };
+  const dynamic = sources.some((s) => s.dynamic);
+
+  // variable / function names from the clip names, never clashing with a name the code uses
+  const used = new Set<string>(PY_KEYWORDS);
+  for (const s of sources) for (const m of s.code.matchAll(/[A-Za-z_]\w*/g)) used.add(m[0]);
+  const unique = (base: string) => {
+    let n = base, i = 2;
+    while (used.has(n)) n = `${base}_${i++}`;
+    used.add(n);
+    return n;
+  };
+  const indent = (code: string) => code.split('\n').map((l) => (l.trim() ? '    ' + l : '')).join('\n');
+  const defs: string[] = [];
+  const lines: string[] = [];
+  const vars: string[] = [];
+  const parts: Record<string, any> = {};
+  sel.forEach((c, i) => {
+    const stem = c.name.toLowerCase().replace(/\W+/g, '_').replace(/^_+|_+$/g, '') || 'part';
+    const base = /^\d/.test(stem) ? `p_${stem}` : stem;
+    const v = unique(base);
+    const fn = unique(`make_${base}`);
+    let body = sources[i].code.replace(/\s+$/, '') || 'return VMobject()';
+    if (!/\breturn\b/.test(body)) {
+      const ls = body.split('\n');
+      ls[ls.length - 1] = 'return ' + ls[ls.length - 1];
+      body = ls.join('\n');
+    }
+    defs.push(`def ${fn}(${sources[i].dynamic ? 't=0.0, a=0.0' : ''}):\n${indent(body)}`);
+    const off = round(c.start - start, 3);
+    const tr = c.transform;
+    const kw = [`x=${num(tr.x - origin.x)}`, `y=${num(tr.y - origin.y)}`];
+    if ((tr.z || 0) - origin.z) kw.push(`z=${num((tr.z || 0) - origin.z)}`);
+    if (tr.scale !== 1) kw.push(`scale=${num(tr.scale)}`);
+    if (tr.rotation) kw.push(`rotation=${num(tr.rotation)}`);
+    if (tr.rx) kw.push(`rx=${num(tr.rx)}`);
+    if (tr.ry) kw.push(`ry=${num(tr.ry)}`);
+    if (tr.opacity !== 1) kw.push(`opacity=${num(tr.opacity)}`);
+    // the element's own moved parts stay moved; its part timing moves under the element
+    const offsets: string[] = [];
+    for (const [path, spec] of Object.entries(c.parts || {})) {
+      if (spec.dx || spec.dy) offsets.push(`"${path}": (${num(spec.dx || 0)}, ${num(spec.dy || 0)})`);
+      const timing: any = {};
+      if (spec.at != null) timing.at = round(spec.at + off, 3);
+      if (spec.until != null) timing.until = round(spec.until + off, 3);
+      if (spec.enter) timing.enter = { ...spec.enter };
+      if (spec.exit) timing.exit = { ...spec.exit };
+      if (Object.keys(timing).length) parts[`${i}.${path}`] = timing;
+    }
+    if (offsets.length) kw.push(`offsets={${offsets.join(', ')}}`);
+    const call = sources[i].dynamic ? `${fn}(*part_time(t, ${num(off)}, ${num(c.duration)}))` : `${fn}()`;
+    lines.push(`${v} = place_part(${call}, ${kw.join(', ')})`);
+    vars.push(v);
+    parts[String(i)] = { at: off, until: round(off + c.duration, 3), enter: { ...c.enter }, exit: { ...c.exit } };
+  });
+  const names = sel.map((c) => c.name);
+  const code = [
+    `# Group of ${names.join(', ')}: each element keeps its own timing (its part row on the timeline)`,
+    ...defs.map((d) => d + '\n'),
+    ...lines,
+    `return group_of(${vars.join(', ')})`,
+  ].join('\n');
+  const lost = sel.filter((c) => c.effects.length || c.keys.length).map((c) => c.name);
+
+  const gid = uid('c');
+  S().commit((p) => {
+    const set = new Set(ids);
+    const oldTracks = new Set(sel.map((c) => c.track));
+    // the group sits on the front-most element's track
+    const front = [...sel].sort((a, b) => trackIdx(a) - trackIdx(b))[0];
+    p.clips = p.clips.filter((c) => !set.has(c.id));
+    const g: Clip = {
+      id: gid,
+      name: uniqueGroupName(p),
+      item: dynamic ? 'custom_dynamic' : 'custom',
+      track: front.track,
+      start: round(start, 3),
+      duration: round(end - start, 3),
+      params: {},
+      code,
+      dynamic,
+      ...(sel[0].fixed ? { fixed: true } : {}),
+      transform: { x: origin.x, y: origin.y, z: origin.z, scale: 1, rotation: 0, rx: 0, ry: 0, opacity: 1 },
+      keys: [],
+      enter: { type: 'none', duration: 0 },
+      exit: { type: 'none', duration: 0 },
+      effects: [],
+      parts,
+    };
+    p.clips.push(g);
+    if (!trackIsFree(p, g.track, g.start, g.duration, g.id)) resolveOverlap(p, g.id);
+    // the elements' tracks that are now empty go away
+    const busy = new Set(p.clips.map((c) => c.track));
+    if (p.tracks.length > 1) p.tracks = p.tracks.filter((t) => !oldTracks.has(t.id) || busy.has(t.id));
+  });
+  useStore.setState({ selection: [gid], selectedPart: null, selectedKey: null, partsOpen: [...S().partsOpen.filter((k) => k !== gid), gid] });
+  S().toast(
+    lost.length
+      ? `Grouped ${sel.length} clips — effects / keyframes of ${lost.join(', ')} were dropped`
+      : `Grouped ${sel.length} clips into a VGroup — each keeps its timing (rows under the clip)`,
+    lost.length ? 'error' : 'success',
+    { label: 'Undo', run: () => S().undo() },
+  );
+}
+
+function uniqueGroupName(p: Project) {
+  const names = new Set(p.clips.map((c) => c.name));
+  if (!names.has('Group')) return 'Group';
+  let i = 2;
+  while (names.has(`Group ${i}`)) i++;
+  return `Group ${i}`;
 }
 
 function uniqueName(p: Project, base: string) {

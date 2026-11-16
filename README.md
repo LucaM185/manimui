@@ -32,7 +32,7 @@ for `Tex` mobjects.
 
 ## Settings
 
-The **Settings** tab in the right column (⌘, / Ctrl+,) holds:
+**Settings** (the gear icon at the top right, or ⌘, / Ctrl+,) holds:
 
 * **OpenRouter API key** for the AI agent: paste it, *Test* checks it against OpenRouter (free).
   Stored owner-only in `settings.json` in the app's user-data folder
@@ -187,7 +187,7 @@ npm run test:e2e      # drives the Electron app with mouse/keyboard (drag & drop
 npm run test:e2e3d   # 3D: overlay vs render alignment, orbit / pan / zoom, view cube, 3D moves, pinning
 node tests/perf.mjs   # playback / drag frame rates
 node tests/checkpoints.mjs  # agent git checkpoints + back button (mocked model, free)
-npm run test:settings # Settings tab: API key save/test/remove, preview quality caps (free)
+npm run test:settings # Settings popup (gear icon): API key save/test/remove, preview quality caps (free)
 ```
 
 ## Notes

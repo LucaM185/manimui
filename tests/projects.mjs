@@ -37,7 +37,7 @@ const menu = (cmd) => app.evaluate(({ BrowserWindow }, c) => BrowserWindow.getAl
 const st = () => win.evaluate(() => { const s = window.__ms.store.getState(); return { filePath: s.filePath, name: s.project.settings.name, clips: s.project.clips.length, dirty: s.dirty, playing: s.playing, open: s.projectsOpen }; });
 const isOpen = () => win.evaluate(() => !!document.querySelector('[data-testid=projects-popup]'));
 const cards = () => win.$$eval('[data-testid=project-card]', (els) => els.map((e) => ({ name: e.querySelector('.proj-name, .proj-rename')?.textContent || e.querySelector('input')?.value, path: e.dataset.path, current: !!e.dataset.current, thumb: !!e.querySelector('img'), text: e.textContent })));
-const openPopup = async () => { await win.click('[data-testid=projects-btn]'); await win.waitForSelector('[data-testid=project-card]'); };
+const openPopup = async () => { await win.click('[data-testid=tb-projects]'); await win.waitForSelector('[data-testid=project-card]'); };
 const cardSel = (name) => `[data-testid=project-card][data-path$="/${name}.mstudio"]`;
 
 console.log('▸ save an example project into the projects folder');
@@ -45,8 +45,8 @@ await win.click('[data-testid="load-example"]'); await win.waitForTimeout(1500);
 await menu('save');
 await win.waitForFunction(() => !!window.__ms.store.getState().filePath, null, { timeout: 5000 });
 check(fs.existsSync(path.join(DIR, 'Pythagoras.mstudio')), 'saved Pythagoras.mstudio');
-const box = await win.$eval('[data-testid=projects-btn]', (e) => { const r = e.getBoundingClientRect(); const n = document.querySelector('.project-name').getBoundingClientRect(); return { right: r.right, nameLeft: n.left, h: r.height }; });
-check(box.right <= box.nameLeft && box.nameLeft - box.right < 80, `Projects button sits just left of the tab holding the project name (${box.right.toFixed(0)} → ${box.nameLeft.toFixed(0)})`);
+const box = await win.evaluate(() => { const m = document.querySelector('[data-testid=tb-settings]').getBoundingClientRect(); const n = document.querySelector('.project-name').getBoundingClientRect(); return { menuGap: innerWidth - m.right, nameLeft: n.left }; });
+check(box.nameLeft < 200 && box.menuGap < 30, `project tab on the left, icon buttons at the right edge (${JSON.stringify(box)})`);
 
 console.log('▸ popup lists recents + folder');
 await openPopup();

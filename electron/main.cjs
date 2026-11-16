@@ -1077,7 +1077,7 @@ function readEnvFile() {
   return out;
 }
 
-// App settings (Settings tab): render quality + the OpenRouter key typed in the app. Stored as
+// App settings (Settings popup): render quality + the OpenRouter key typed in the app. Stored as
 // plain JSON with owner-only permissions in userData, like a .env file would be.
 const SETTINGS_FILE = process.env.MATHSTUDIO_SETTINGS || path.join(app.getPath('userData'), 'settings.json');
 const QUALITIES = ['auto', 'high', 'balanced', 'low'];

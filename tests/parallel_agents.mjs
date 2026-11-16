@@ -110,14 +110,13 @@ try {
   check(['Alpha', 'Beta', 'Gamma'].every((n) => ps.some((p) => p.name === n)), `recent projects on the strip: ${ps.map((p) => p.name).join(', ')}`);
   // Chrome-style tabs: right after the Projects button, hanging from the bar's bottom edge
   const lay = await win.evaluate(() => {
-    const btn = document.querySelector('[data-testid=projects-btn]').getBoundingClientRect();
     const tabs = [...document.querySelectorAll('[data-testid=strip-pill]')].map((e) => e.getBoundingClientRect());
     const bar = document.querySelector('.topbar').getBoundingClientRect();
     const plus = document.querySelector('[data-testid=strip-new]')?.getBoundingClientRect();
-    const exp = document.querySelector('[data-testid=export-btn]').getBoundingClientRect();
-    return { gap: tabs[0].left - btn.right, bottom: Math.max(...tabs.map((t) => t.bottom)) - bar.bottom, plus: plus && plus.left >= tabs[tabs.length - 1].right - 1, right: exp.right - bar.right };
+    const exp = document.querySelector('[data-testid=tb-settings]').getBoundingClientRect();
+    return { gap: tabs[0].left - bar.left, bottom: Math.max(...tabs.map((t) => t.bottom)) - bar.bottom, plus: plus && plus.left >= tabs[tabs.length - 1].right - 1, right: exp.right - bar.right };
   });
-  check(lay.gap >= 0 && lay.gap < 40 && Math.abs(lay.bottom) <= 1 && lay.plus && lay.right > -20, `tabs follow Projects and sit on the bar's bottom edge, + after them, Export at the right (${JSON.stringify(lay)})`);
+  check(lay.gap >= 0 && lay.gap < 120 && Math.abs(lay.bottom) <= 1 && lay.plus && lay.right > -20, `tabs start at the left and sit on the bar's bottom edge, + after them, icon buttons at the right (${JSON.stringify(lay)})`);
   await shot('01-strip');
 
   console.log('▸ switch to Alpha with one click, start an agent');
@@ -249,7 +248,7 @@ try {
   console.log('▸ projects browser knows about the agents');
   await send('tag D: add 2 circle');
   await win.click(pill('Beta'));
-  await win.click('[data-testid=projects-btn]');
+  await win.click('[data-testid=tb-projects]');
   await win.waitForSelector('[data-testid=project-card]');
   check(await win.$(`[data-testid=project-card][data-path$="/Alpha.mstudio"] [data-testid=project-ai-badge]`) !== null, 'Alpha card shows "AI working"');
   await shot('07-projects-ai');

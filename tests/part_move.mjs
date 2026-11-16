@@ -88,9 +88,8 @@ ok = await waitFor(() => !!document.querySelector('.part-bar.selected[data-clip-
 check(ok, 'its row opens and is selected on the timeline');
 const foc = await win.evaluate(() => { const s = window.__ms.store.getState(); return { tab: s.rightTab, section: s.inspectorFocus?.section }; });
 check(foc.tab === 'inspector' && foc.section === 'params', `double-click opens the Parameters section (${JSON.stringify(foc)})`);
-check(await waitFor(() => !!document.querySelector('[data-section=params] .ins-body'), null, 2000), 'Parameters is expanded');
-if (!(await win.isVisible('[data-testid=part-dx]'))) await win.click('[data-section=parts] h5');
-check(await win.isVisible('[data-testid=part-dx]'), 'the inspector shows Move X / Move Y for the part');
+check(await waitFor(() => !!document.querySelector('[data-section=params] .ins-body'), null, 2000), 'Parameters are shown');
+check(!(await win.$('[data-section=parts]')), 'no Parts section in the inspector (parts are edited on the timeline / viewer)');
 
 // ------------------------------------------------------------------ drag it
 console.log('\n▶ Dragging the part moves only that part');
@@ -108,8 +107,6 @@ check(info.bbox && near(info.bbox[2], 5.93, 0.05) && near(info.bbox[3], 2, 0.05)
 check(near(info.bbox[0], -3.93, 0.05), 'the square stays put');
 ok = await waitFor(() => !!document.querySelector('.part-bar[data-part="2"] [data-testid=part-moved]'), null, 3000);
 check(ok, 'the timeline row marks the part as moved');
-const dxVal = await win.inputValue('[data-testid=part-dx]').catch(() => null);
-check(dxVal !== null && near(parseFloat(dxVal), 2, 0.05), `inspector Move X shows ${dxVal}`);
 await shot('1-moved.png');
 
 // the clip's hit box follows the moved part: clicking it there still hits the clip
@@ -153,17 +150,13 @@ await win.keyboard.up('Shift');
 const c2 = await clipOf('grp');
 check(near((c2.parts['0'].dx || 0) - (c.parts['0'].dx || 0), 1, 0.08) && !c2.parts['0'].dy, `shift-drag stays horizontal (${JSON.stringify(c2.parts?.['0'])})`);
 
-// ------------------------------------------------------------------ inspector + undo
-console.log('\n▶ Inspector fields, Put back, undo');
-await S(() => window.__ms.store.setState({ selectedPart: { clip: 'grp', path: '1' }, selection: ['grp'] }));
-await win.waitForSelector('[data-testid=part-dy]');
-await win.fill('[data-testid=part-dy]', '1.25');
-await win.press('[data-testid=part-dy]', 'Enter');
+// ------------------------------------------------------------------ reset from the timeline + undo
+console.log('\n▶ Right-click a part bar → Reset this part, undo');
+await S(() => window.__ms.store.getState().commit((p) => { const g = p.clips.find((x) => x.id === 'grp'); g.parts = { ...g.parts, '1': { dy: 1.25 } }; }));
+await win.click('.part-bar[data-clip-part="grp"][data-part="1"]', { button: 'right' });
+await win.click('.ctx-item:has-text("Reset this part")');
 c = await clipOf('grp');
-check(near(c.parts?.['1']?.dy ?? 0, 1.25, 1e-6) && !c.parts['1'].dx, `typing Move Y moves the circle (${JSON.stringify(c.parts?.['1'])})`);
-await win.click('[data-testid=part-put-back]');
-c = await clipOf('grp');
-check(!c.parts?.['1'], 'Put back removes its offset');
+check(!c.parts?.['1'], 'Reset this part removes its offset');
 await S(() => window.__ms.store.getState().undo());
 c = await clipOf('grp');
 check(near(c.parts?.['1']?.dy ?? 0, 1.25, 1e-6), 'undo brings the offset back');
@@ -176,12 +169,6 @@ await S(() => window.__ms.store.getState().setTime(3));
 await settle();
 info = await S(() => window.__ms.store.getState().meta.clips.grp);
 check(info.bbox && near(info.bbox[2], 5.93, 0.05), `…and appears where it was moved (right edge ${info.bbox?.[2]?.toFixed(2)})`);
-// "Follow the clip" resets timing but keeps the position
-await S(() => window.__ms.store.setState({ selectedPart: { clip: 'grp', path: '2' } }));
-await win.click('button:has-text("Follow the clip")');
-c = await clipOf('grp');
-check(c.parts?.['2'] && c.parts['2'].at === undefined && near(c.parts['2'].dx, 2, 0.05), `Follow the clip keeps the position (${JSON.stringify(c.parts?.['2'])})`);
-
 // ------------------------------------------------------------------ nested groups + Escape
 console.log('\n▶ Nested groups: double-click goes deeper, Escape goes up');
 await S(([n]) => window.__ms.store.getState().commit((p) => {

@@ -8,9 +8,10 @@ import * as sessions from './sessions';
 import { editorState, runTool } from './agent/tools';
 import { buildSystemPrompt } from './agent/prompt';
 import { useSessions } from './store';
+import * as ops from './ops';
 import { cameraAt } from './ops';
 
 // handle for automated UI tests / debugging from devtools
-(window as any).__ms = { store: useStore, actions, agent, sessions, bg: useSessions, agentTools: { runTool, editorState, buildSystemPrompt }, cameraAt };
+(window as any).__ms = { store: useStore, actions, agent, sessions, bg: useSessions, agentTools: { runTool, editorState, buildSystemPrompt }, cameraAt, ops };
 
 createRoot(document.getElementById('root')!).render(<App />);

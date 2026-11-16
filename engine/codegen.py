@@ -168,8 +168,16 @@ def effective_imports(project: dict) -> dict:
     """
     own = {imp["fn"]: imp["code"] for imp in (project.get("imports") or []) if imp.get("fn") and imp.get("code")}
     out: dict = {}
+    by_fn = None
     for clip, _ in ordered_clips(project):
         if clip.get("code"):
+            # custom code (a group, or an imported item turned into code) may call imported definitions
+            if by_fn is None:
+                by_fn = {it["fn"]: it for it in library.BY_ID.values() if it.get("prelude") and it.get("fn")}
+            for fn in _code_names(clip["code"]):
+                it = by_fn.get(fn)
+                if it is not None and fn not in out:
+                    out[fn] = own.get(fn, it["prelude"])
             continue
         item = library.BY_ID.get(clip.get("item"))
         if item and item.get("prelude"):
@@ -177,6 +185,15 @@ def effective_imports(project: dict) -> dict:
             if fn not in out:
                 out[fn] = own.get(fn, item["prelude"])
     return out
+
+
+@__import__("functools").lru_cache(maxsize=512)
+def _code_names(code: str) -> tuple:
+    """Names called in a piece of code, in first-use order."""
+    seen: dict = {}
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", code):
+        seen.setdefault(m.group(1), None)
+    return tuple(seen)
 
 
 def clip_body(clip: dict) -> str:

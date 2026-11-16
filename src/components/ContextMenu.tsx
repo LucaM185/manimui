@@ -9,9 +9,13 @@ export interface MenuItem {
   danger?: boolean;
   sep?: boolean;
   submenu?: MenuItem[];
+  testid?: string;
+  /** small accent dot after the label (e.g. an update is waiting) */
+  dot?: boolean;
 }
 
-export default function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+/** `anchor`: the button that toggles this menu; pressing it is not an outside click (the button closes it). */
+export default function ContextMenu({ x, y, items, onClose, className = '', anchor }: { x: number; y: number; items: MenuItem[]; onClose: () => void; className?: string; anchor?: HTMLElement | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
   const [open, setOpen] = useState<number | null>(null);
@@ -30,7 +34,7 @@ export default function ContextMenu({ x, y, items, onClose }: { x: number; y: nu
   useEffect(() => {
     const onClose = () => onCloseRef.current();
     const close = (e: Event) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
+      if (!ref.current?.contains(e.target as Node) && !anchor?.contains(e.target as Node)) onClose();
     };
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     const blur = () => onClose();
@@ -51,7 +55,7 @@ export default function ContextMenu({ x, y, items, onClose }: { x: number; y: nu
   }, []);
 
   return (
-    <div className="ctx-menu" ref={ref} style={{ left: pos.x, top: pos.y }}>
+    <div className={`ctx-menu ${className}`} ref={ref} style={{ left: pos.x, top: pos.y }}>
       {items.map((it, i) =>
         it.sep ? (
           <div key={i} className="ctx-sep" />
@@ -59,6 +63,7 @@ export default function ContextMenu({ x, y, items, onClose }: { x: number; y: nu
           <div
             key={i}
             className={`ctx-item ${it.disabled ? 'disabled' : ''} ${it.danger ? 'danger' : ''}`}
+            data-testid={it.testid}
             onMouseEnter={() => setOpen(it.submenu ? i : null)}
             onClick={() => {
               if (it.disabled || it.submenu) return;
@@ -66,7 +71,7 @@ export default function ContextMenu({ x, y, items, onClose }: { x: number; y: nu
               onClose();
             }}
           >
-            <span className="ctx-label"><span className="ctx-icon">{it.icon}</span>{it.label}</span>
+            <span className="ctx-label"><span className="ctx-icon">{it.icon}</span>{it.label}{it.dot && <span className="upd-dot" />}</span>
             {it.shortcut && <span className="sc">{it.shortcut}</span>}
             {it.submenu && <span className="sc">▸</span>}
             {it.submenu && open === i && (

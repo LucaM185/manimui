@@ -58,6 +58,7 @@ interface State {
   codeOpen: boolean;
   exportOpen: boolean;
   projectsOpen: boolean;
+  settingsOpen: boolean;
   snapping: boolean;
   tool: Tool;
   interacting: boolean;
@@ -69,7 +70,7 @@ interface State {
   codeClip: string | null;
   /** ask the inspector to open one section of a clip (n bumps on every request) */
   inspectorFocus: { clip: string; section: string; effectId?: string; n: number } | null;
-  rightTab: 'inspector' | 'agent' | 'settings';
+  rightTab: 'inspector' | 'agent';
   /** preview quality from Settings (persisted by main in settings.json) */
   renderQuality: RenderQuality;
   /** OpenGL implementation the engine renders with (from /health) */
@@ -175,6 +176,7 @@ export const useStore = create<State>((set, get) => ({
   codeOpen: false,
   exportOpen: false,
   projectsOpen: false,
+  settingsOpen: false,
   snapping: true,
   tool: 'select',
   interacting: false,

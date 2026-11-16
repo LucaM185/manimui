@@ -15,14 +15,15 @@ import ExportDialog from './components/ExportDialog';
 import ProjectsPanel from './components/ProjectsPanel';
 import Toasts from './components/Toasts';
 import AgentPanel from './components/AgentPanel';
-import SettingsPanel from './components/SettingsPanel';
+import SettingsDialog from './components/SettingsDialog';
 import { useAgent } from './agent/agent';
-import { hasUpdate, initUpdates, useUpdate } from './updates';
-import { Settings, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { initUpdates } from './updates';
+import { SlidersHorizontal, Sparkles } from 'lucide-react';
 import {
   copySelection,
   deleteSelection,
   duplicateSelection,
+  groupSelection,
   importFiles,
   loadExample,
   newProjectAction,
@@ -34,7 +35,7 @@ import {
   switchToProject,
   switchToSession,
 } from './actions';
-import { normalizeProject, addKeyAt, CAMERA_ID, setCameraAt } from './ops';
+import { normalizeProject, CAMERA_ID, setCameraAt } from './ops';
 import { exitEditorView, fitNav, lookPreset } from './nav';
 
 /** padding around the stage inside .preview-wrap (Preview's sizing effect) */
@@ -75,9 +76,9 @@ export default function App() {
   const codeOpen = useStore((s) => s.codeOpen);
   const exportOpen = useStore((s) => s.exportOpen);
   const projectsOpen = useStore((s) => s.projectsOpen);
+  const settingsOpen = useStore((s) => s.settingsOpen);
   const rightTab = useStore((s) => s.rightTab);
   const agentRunning = useAgent((s) => s.running);
-  const updateDot = useUpdate((u) => hasUpdate(u.status));
   const [timelineH, setTimelineH] = useState(300);
   const [leftW, setLeftW] = useState(300);
   const [globalsH, setGlobalsH] = usePersisted('ms.globalsH', 200);
@@ -196,14 +197,14 @@ export default function App() {
           useStore.setState({ rightTab: 'agent' });
           setTimeout(() => window.dispatchEvent(new Event('agent:focus')), 0);
           return;
-        case 'settings': return useStore.setState({ rightTab: 'settings' });
+        case 'settings': return useStore.setState({ settingsOpen: !S().settingsOpen });
       }
     });
     let held: { key: string; prev: Tool; at: number } | null = null;
     // quick project switching works everywhere, even while typing to the agent:
     // ⌃Tab = back to the previous project, ⌘1…⌘7 = the projects on the top-bar strip
     const onSwitchKey = (e: KeyboardEvent) => {
-      if (S().projectsOpen || S().exportOpen) return;
+      if (S().projectsOpen || S().exportOpen || S().settingsOpen) return;
       if (e.ctrlKey && !e.metaKey && e.key === 'Tab') {
         e.preventDefault();
         e.stopPropagation();
@@ -222,6 +223,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onSwitchKey, true);
     const onKey = (e: KeyboardEvent) => {
+      if (S().settingsOpen || S().exportOpen) return;
       if (isEditable(document.activeElement)) {
         if (e.key === 'Escape') (document.activeElement as HTMLElement).blur();
         return;
@@ -241,6 +243,10 @@ export default function App() {
         case mod && e.key.toLowerCase() === 'd':
           e.preventDefault();
           duplicateSelection();
+          break;
+        case mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'g':
+          e.preventDefault();
+          groupSelection();
           break;
         case mod && e.key.toLowerCase() === 'c':
           copySelection();
@@ -286,11 +292,7 @@ export default function App() {
             st.toast('Camera keyframe added');
             break;
           }
-          st.commit((p) => {
-            const c = p.clips.find((c) => c.id === id);
-            if (c) addKeyAt(c, st.time - c.start, fps);
-          });
-          st.toast('Keyframe added');
+          // clips have no keyframes: a change over time is a transform (T)
           break;
         }
         case e.key === 'ArrowLeft':
@@ -398,11 +400,8 @@ export default function App() {
           <button className={rightTab === 'agent' ? 'on' : ''} onClick={() => useStore.setState({ rightTab: 'agent' })} data-testid="right-tab-agent" title="AI agent (⌘L)">
             <Sparkles size={13} /> AI Agent {agentRunning && rightTab !== 'agent' && <span className="busy-dot" />}
           </button>
-          <button className={`icon-tab ${rightTab === 'settings' ? 'on' : ''}`} onClick={() => useStore.setState({ rightTab: 'settings' })} data-testid="right-tab-settings" title="Settings (⌘,)">
-            <Settings size={13} /> <span className="tab-label">Settings</span>{updateDot && rightTab !== 'settings' && <span className="upd-dot" data-testid="update-dot" title="Update available" />}
-          </button>
         </div>
-        {rightTab === 'inspector' ? <Inspector /> : rightTab === 'agent' ? <AgentPanel /> : <SettingsPanel />}
+        {rightTab === 'agent' ? <AgentPanel /> : <Inspector />}
       </div>
       <div
         className="hsplit"
@@ -414,6 +413,7 @@ export default function App() {
       <Timeline />
       {exportOpen && <ExportDialog />}
       {projectsOpen && <ProjectsPanel />}
+      {settingsOpen && <SettingsDialog />}
       <Toasts />
     </div>
   );

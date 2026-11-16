@@ -59,7 +59,7 @@ const launch = async () => {
   win.on('pageerror', (e) => console.log('   pageerror:', e.message));
   await win.setViewportSize({ width: 1600, height: 950 });
   await win.waitForSelector('.topbar', { timeout: 240000 });
-  await win.click('[data-testid=right-tab-settings]');
+  await win.click('[data-testid=tb-settings]');
   await win.waitForSelector('[data-testid=settings-updates]');
   await win.locator('[data-testid=settings-updates]').scrollIntoViewIfNeeded();
   return { app, win };

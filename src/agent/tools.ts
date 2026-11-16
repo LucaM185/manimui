@@ -65,7 +65,7 @@ const clipProps = {
   enter: animSchema('enter'),
   exit: animSchema('exit'),
   effects: { type: 'array', description: 'REPLACES all effects', items: { type: 'object', properties: { type: { type: 'string' }, at: num('seconds since the clip start'), duration: num('seconds'), rate: { type: 'string' } }, required: ['type', 'at'] } },
-  keyframes: { type: 'array', description: 'REPLACES all transform keyframes ([] removes them)', items: keySchema },
+  keyframes: { type: 'array', description: 'Legacy only: [] removes old keyframes. Clips are never keyframed; to move or change something over time use a TransformInto morph chain.', items: keySchema },
   parts: {
     type: ['object', 'null'],
     description:
@@ -479,6 +479,10 @@ function applySpec(p: Project, c: Clip, spec: any, warnings: string[], pending?:
       if (Object.keys(out).length) c.parts = out;
       else delete c.parts;
     }
+  }
+  if (Array.isArray(spec.keyframes) && spec.keyframes.length) {
+    warnings.push(`${label}: keyframes are not supported (ignored) — to move or change it over time, end it with exit TransformInto into a copy with the new transform`);
+    spec = { ...spec, keyframes: undefined };
   }
   if (Array.isArray(spec.keyframes)) {
     const base = { ...DEFAULT_TRANSFORM, ...c.transform };

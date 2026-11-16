@@ -5,7 +5,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { keymap } from '@codemirror/view';
 import { editClipCode, useStore, itemById } from '../store';
 import { fetchClipSource } from '../engine';
-import { addKeyAt, CAMERA_ID, cameraAt, selectedMorph, CATEGORY_COLORS, isFlat, joinMorphTrack, keyAt, resolveOverlap, round, setCameraAt, setTransformAt, transformAt } from '../ops';
+import { CAMERA_ID, cameraAt, selectedMorph, CATEGORY_COLORS, isFlat, round, setCameraAt, setTransformAt, transformAt } from '../ops';
 import { fitNav, lookPreset } from '../nav';
 import { VIEW_PRESETS } from '../view3d';
 import type { Clip, Project, Transform } from '../types';
@@ -13,15 +13,14 @@ import { evalLayout, layoutProblems } from '../globals';
 import { ColorField, NumberField, SelectField, TextField, type FieldHooks } from './fields';
 import LinkableParam from './LinkableParam';
 import CodeKnobs, { PartStyle } from './CodeKnobs';
-import { deleteSelection, duplicateSelection, removeTransform } from '../actions';
-import AnimPicker from './AnimPicker';
+import { findNode, useClipParts } from '../parts';
+import { deleteSelection, duplicateSelection, groupProblem, groupSelection, removeTransform } from '../actions';
 import { exitWindow, isMorph, useClipThumb } from '../clipThumbs';
-import { findNode, hasOffset, isGroupTree, movePart, openKey, partName, partTiming, resetPart, setPart, staggerParts, timedParts, useClipParts } from '../parts';
-import { AnimIcon, CategoryIcon } from '../icons';
+import { CategoryIcon } from '../icons';
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical,
-  ChevronLeft, ChevronRight, Clapperboard, Diamond, ListTree, LogIn, LogOut, Move, RotateCcw, SlidersHorizontal, Sparkles,
-  Trash2, Video, X, AlertTriangle, Copy, Link2, Unlink, Shuffle, ArrowRight,
+  Clapperboard, Diamond, RotateCcw, Sparkles,
+  Trash2, Video, X, AlertTriangle, Copy, Link2, Unlink, Shuffle, ArrowRight, Boxes,
 } from 'lucide-react';
 
 const FW = 14.222222222222221;
@@ -99,8 +98,8 @@ function SceneSettings() {
           <li><b>Drag</b> a mobject from the library onto the preview to place it, or onto the timeline to place it in time.</li>
           <li><b>Drag objects in the preview</b> to move them. Pick an object or the camera by its centre <b>+</b> and it snaps onto other centres. Corners scale, the top dot rotates. <kbd>⇧</kbd> constrains, <kbd>⌘</kbd> disables snapping.</li>
           <li>The <b>timeline’s vertical order is z-order</b>: the top track is drawn in front. Drag a track’s ⠿ grip to reorder.</li>
-          <li>Drag the shaded <b>enter / exit</b> regions of a clip to change animation length.</li>
-          <li><kbd>K</kbd> adds a keyframe at the playhead — then drag the object at other times to animate it.</li>
+          <li><b>Click</b> the shaded start / end of a clip to pick its enter / exit animation (hover a clip’s corner and click <b>+</b> when it has none); drag the dashed line to change its length.</li>
+          <li>To <b>move or change an object over time</b>, press <kbd>T</kbd> (or right-click → Add transform here): the clip splits, and you move or restyle the second half.</li>
           <li><kbd>A</kbd> select tool · <kbd>B</kbd> blade tool (click a clip to cut, <kbd>⇧</kbd> all) · <kbd>⌘B</kbd> blade at playhead</li>
           <li><kbd>Space</kbd> play · <kbd>⌘D</kbd> duplicate · <kbd>⌫</kbd> delete · <kbd>←/→</kbd> step</li>
           <li>Drop images or SVGs from Finder anywhere.</li>
@@ -111,117 +110,84 @@ function SceneSettings() {
 }
 
 // ---------------------------------------------------------------------------- transform
-function TransformSection({ clip }: { clip: Clip }) {
+/**
+ * Where the clip is. One static transform per clip: to move / scale / restyle something over time,
+ * split it with "Add transform here" on the timeline (T) and change the copy.
+ */
+function TransformFields({ clip }: { clip: Clip }) {
   const time = useStore((s) => s.time);
   const fps = useStore((s) => s.project.settings.fps);
   const { begin, edit } = useClipEdit(clip.id);
-  const u = time - clip.start;
-  const inside = u >= 0 && u <= clip.duration;
-  const tr = transformAt(clip, Math.min(Math.max(u, 0), clip.duration));
-  const onKey = keyAt(clip, u, fps);
-  const hasKeys = clip.keys.length > 0;
+  const u = Math.min(Math.max(time - clip.start, 0), clip.duration);
+  const tr = transformAt(clip, u);
+  const legacyKeys = clip.keys.length > 0;
   const field = (k: keyof Transform): FieldHooks => ({
     onBegin: begin,
-    onChange: (v) => edit((c) => setTransformAt(c, Math.min(Math.max(u, 0), c.duration), { [k]: v }, fps)),
+    onChange: (v) => edit((c) => setTransformAt(c, u, { [k]: v }, fps)),
   });
-  const keysSorted = [...clip.keys].sort((a, b) => a.t - b.t);
-  const prev = [...keysSorted].reverse().find((k) => k.t < u - 1e-4);
-  const next = keysSorted.find((k) => k.t > u + 1e-4);
-  const setTime = useStore.getState().setTime;
 
   return (
-    <Section
-      icon={<Move size={13} />}
-      title="Transform"
-      right={
-        <div className="kf-controls">
-          <button className="mini" disabled={!prev} title="Previous keyframe" onClick={() => prev && setTime(clip.start + prev.t)}><ChevronLeft size={14} /></button>
-          <button
-            className={`kf-btn ${onKey ? 'on' : hasKeys ? 'half' : ''}`}
-            title={onKey ? 'Remove keyframe at playhead' : 'Add keyframe at playhead (K)'}
-            disabled={!inside}
-            data-testid="kf-toggle"
-            onClick={() => {
-              begin();
-              edit((c) => {
-                const k = keyAt(c, u, fps);
-                if (k) c.keys = c.keys.filter((x) => x.id !== k.id);
-                else addKeyAt(c, u, fps);
-              });
-            }}
-          >
-            <Diamond size={12} fill={onKey ? 'currentColor' : 'none'} />
-          </button>
-          <button className="mini" disabled={!next} title="Next keyframe" onClick={() => next && setTime(clip.start + next.t)}><ChevronRight size={14} /></button>
+    <section className="ins-section bare" data-section="transform">
+      <div className="ins-body">
+        {legacyKeys && (
+          <div className="kf-note legacy" data-testid="legacy-keys">
+            This clip moves with old keyframes ({clip.keys.length}).{' '}
+            <a onClick={() => { begin(); edit((c) => { c.keys = []; c.transform = { ...transformAt(c, u) }; }); }}>Remove them</a>
+            {' '}and use <b>Add transform here</b> (T) on the timeline instead.
+          </div>
+        )}
+        <div className="grid2">
+          <NumberField label="X" value={tr.x} step={0.05} {...field('x')} testid="tr-x" />
+          <NumberField label="Y" value={tr.y} step={0.05} {...field('y')} testid="tr-y" />
+          <NumberField label="Scale" value={tr.scale} step={0.05} min={0.01} {...field('scale')} testid="tr-scale" />
+          <NumberField label="Rotation" value={tr.rotation} step={1} suffix="°" {...field('rotation')} />
         </div>
-      }
-    >
-      {hasKeys && (
-        <div className={`kf-note ${onKey ? 'on' : ''}`}>
-          {onKey ? '◆ Editing the keyframe at the playhead' : inside ? '◇ Editing here creates a keyframe' : 'Playhead is outside this clip'}
+        {!legacyKeys && <LayoutBinding clip={clip} />}
+        <div className="grid2">
+          <NumberField label="Z" value={tr.z || 0} step={0.05} {...field('z')} testid="tr-z" />
+          <NumberField label="Opacity" value={tr.opacity} step={0.05} min={0} max={1} {...field('opacity')} />
         </div>
-      )}
-      <div className="grid2">
-        <NumberField label="X" value={tr.x} step={0.05} {...field('x')} testid="tr-x" />
-        <NumberField label="Y" value={tr.y} step={0.05} {...field('y')} testid="tr-y" />
-        <NumberField label="Scale" value={tr.scale} step={0.05} min={0.01} {...field('scale')} testid="tr-scale" />
-        <NumberField label="Rotation" value={tr.rotation} step={1} suffix="°" {...field('rotation')} />
-      </div>
-      {!hasKeys && <LayoutBinding clip={clip} />}
-      <div className="grid2">
-        <NumberField label="Z" value={tr.z || 0} step={0.05} {...field('z')} testid="tr-z" />
-        <NumberField label="Opacity" value={tr.opacity} step={0.05} min={0} max={1} {...field('opacity')} />
-      </div>
-      <div className="grid2" title="3D orientation, applied after Rotation: tip about the x axis, then turn about the y axis. Rot X −90° lays it flat on the floor, readable from the Top view.">
-        <NumberField label="Rot X" value={tr.rx || 0} step={1} suffix="°" {...field('rx')} testid="tr-rx" />
-        <NumberField label="Rot Y" value={tr.ry || 0} step={1} suffix="°" {...field('ry')} testid="tr-ry" />
-      </div>
-      <label className="dyn-toggle pin-toggle" title="Draw it on top of the video in screen space, ignoring camera moves — for titles and labels over a 3D scene">
-        <input type="checkbox" data-testid="pin-toggle" checked={!!clip.fixed} onChange={(e) => { begin(); edit((c) => { if (e.target.checked) c.fixed = true; else delete c.fixed; }); }} />
-        Pin to screen <span className="muted">— ignores the camera (titles over 3D)</span>
-      </label>
-      <div className="align-row">
-        <span className="muted small">Align</span>
-        {([
-          [<AlignStartVertical size={14} />, 'Left edge', { x: -FW / 2 + 1.5 }],
-          [<AlignCenterVertical size={14} />, 'Center horizontally', { x: 0 }],
-          [<AlignEndVertical size={14} />, 'Right edge', { x: FW / 2 - 1.5 }],
-          [<AlignStartHorizontal size={14} />, 'Top edge', { y: FH / 2 - 1 }],
-          [<AlignCenterHorizontal size={14} />, 'Center vertically', { y: 0 }],
-          [<AlignEndHorizontal size={14} />, 'Bottom edge', { y: -FH / 2 + 1 }],
-        ] as [any, string, Partial<Transform>][]).map(([icon, title, patch]) => (
-          <button key={title} className="mini" title={title} onClick={() => { begin(); edit((c) => setTransformAt(c, Math.min(Math.max(u, 0), c.duration), patch, fps)); }}>{icon}</button>
-        ))}
-        <div className="spacer" />
-        <button className="mini text" title="Reset scale, rotation (all axes) and opacity" onClick={() => { begin(); edit((c) => setTransformAt(c, Math.min(Math.max(u, 0), c.duration), { scale: 1, rotation: 0, rx: 0, ry: 0, opacity: 1 }, fps)); }}><RotateCcw size={12} /> Reset</button>
-      </div>
-      {hasKeys && (
-        <div className="kf-list">
-          {keysSorted.map((k, i) => (
-            <div key={k.id} className={`kf-row ${onKey?.id === k.id ? 'on' : ''}`} onClick={() => setTime(clip.start + k.t)}>
-              <span className="kf-dia"><Diamond size={10} fill="currentColor" /></span>
-              <span className="mono">{(clip.start + k.t).toFixed(2)}s</span>
-              <span className="muted small">({k.x.toFixed(1)}, {k.y.toFixed(1)}) ×{k.scale.toFixed(2)}</span>
-              <div className="spacer" />
-              {i > 0 && (
-                <select value={k.ease || 'smooth'} onClick={(e) => e.stopPropagation()} onChange={(e) => { begin(); edit((c) => { const kk = c.keys.find((x) => x.id === k.id); if (kk) kk.ease = e.target.value; }); }} title="Easing into this keyframe">
-                  {['smooth', 'linear', 'rush_into', 'rush_from', 'double_smooth'].map((r) => <option key={r}>{r}</option>)}
-                </select>
-              )}
-              <button className="mini" onClick={(e) => { e.stopPropagation(); begin(); edit((c) => { c.keys = c.keys.filter((x) => x.id !== k.id); if (c.keys.length === 0) c.transform = { ...c.transform, ...{ x: k.x, y: k.y, scale: k.scale, rotation: k.rotation, opacity: k.opacity } }; }); }} title="Delete keyframe"><X size={13} /></button>
-            </div>
+        <div className="grid2" title="3D orientation, applied after Rotation: tip about the x axis, then turn about the y axis. Rot X −90° lays it flat on the floor, readable from the Top view.">
+          <NumberField label="Rot X" value={tr.rx || 0} step={1} suffix="°" {...field('rx')} testid="tr-rx" />
+          <NumberField label="Rot Y" value={tr.ry || 0} step={1} suffix="°" {...field('ry')} testid="tr-ry" />
+        </div>
+        <label className="dyn-toggle pin-toggle" title="Draw it on top of the video in screen space, ignoring camera moves — for titles and labels over a 3D scene">
+          <input type="checkbox" data-testid="pin-toggle" checked={!!clip.fixed} onChange={(e) => { begin(); edit((c) => { if (e.target.checked) c.fixed = true; else delete c.fixed; }); }} />
+          Pin to screen <span className="muted">— ignores the camera (titles over 3D)</span>
+        </label>
+        <div className="align-row">
+          <span className="muted small">Align</span>
+          {([
+            [<AlignStartVertical size={14} />, 'Left edge', { x: -FW / 2 + 1.5 }],
+            [<AlignCenterVertical size={14} />, 'Center horizontally', { x: 0 }],
+            [<AlignEndVertical size={14} />, 'Right edge', { x: FW / 2 - 1.5 }],
+            [<AlignStartHorizontal size={14} />, 'Top edge', { y: FH / 2 - 1 }],
+            [<AlignCenterHorizontal size={14} />, 'Center vertically', { y: 0 }],
+            [<AlignEndHorizontal size={14} />, 'Bottom edge', { y: -FH / 2 + 1 }],
+          ] as [any, string, Partial<Transform>][]).map(([icon, title, patch]) => (
+            <button key={title} className="mini" title={title} onClick={() => { begin(); edit((c) => setTransformAt(c, u, patch, fps)); }}>{icon}</button>
           ))}
-          <button className="btn small ghost" onClick={() => { begin(); edit((c) => { const cur = transformAt(c, Math.min(Math.max(u, 0), c.duration)); c.keys = []; c.transform = cur; }); }}>Remove all keyframes</button>
+          <div className="spacer" />
+          <button className="mini text" title="Reset scale, rotation (all axes) and opacity" onClick={() => { begin(); edit((c) => setTransformAt(c, u, { scale: 1, rotation: 0, rx: 0, ry: 0, opacity: 1 }, fps)); }}><RotateCcw size={12} /> Reset</button>
         </div>
-      )}
-    </Section>
+      </div>
+    </section>
   );
 }
 
 type Focus = { section: string; effectId?: string; n: number } | null;
 
-// ---------------------------------------------------------------------------- properties tab
-function PropsTab({ clip, focus }: { clip: Clip; focus: Focus }) {
+/** A part picked in the viewer / on the timeline: its own style knobs (custom-code clips), above the clip's. */
+function SelectedPartStyle({ clip }: { clip: Clip }) {
+  const path = useStore((s) => (s.selectedPart?.clip === clip.id ? s.selectedPart.path : null));
+  const tree = useClipParts(clip);
+  if (path === null || !clip.code) return null;
+  return <PartStyle clip={clip} label={findNode(tree, path)?.label} />;
+}
+
+// ---------------------------------------------------------------------------- clip: parameters + transform
+/** The clip's look (parameters) and place (transform). Animations, parts and effects live on the timeline. */
+function ClipFields({ clip, focus }: { clip: Clip; focus: Focus }) {
   const item = itemById(clip.item);
   const assets = useStore((s) => s.project.assets);
   const { begin, edit } = useClipEdit(clip.id);
@@ -236,15 +202,20 @@ function PropsTab({ clip, focus }: { clip: Clip; focus: Focus }) {
     window.addEventListener('focus-first-param', f);
     return () => window.removeEventListener('focus-first-param', f);
   }, []);
+  // double-click on the clip (timeline / viewer): bring the parameters into view
+  useEffect(() => {
+    if (focus?.n) firstRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [focus?.n]);
 
   return (
     <>
-      <Section id="params" signal={focus?.section === 'params' ? focus.n : 0} icon={<SlidersHorizontal size={13} />} title="Parameters">
-        {clip.code ? (
-          <CodeKnobs clip={clip} onReset={item && item.params.length > 0 ? () => { begin(); edit((c) => { c.code = null; }); } : undefined} />
-        ) : item && item.params.length ? (
-          <div ref={firstRef}>
-            {item.params.map((p) => (
+      <section className="ins-section bare" data-section="params" ref={firstRef}>
+        <div className="ins-body">
+          <SelectedPartStyle clip={clip} />
+          {clip.code ? (
+            <CodeKnobs clip={clip} onReset={item && item.params.length > 0 ? () => { begin(); edit((c) => { c.code = null; }); } : undefined} />
+          ) : item && item.params.length ? (
+            item.params.map((p) => (
               <LinkableParam
                 key={p.id}
                 def={p}
@@ -252,16 +223,16 @@ function PropsTab({ clip, focus }: { clip: Clip; focus: Focus }) {
                 assets={assets}
                 hooks={{ onBegin: begin, onChange: (v) => edit((c) => { c.params = { ...c.params, [p.id]: v }; }) }}
               />
-            ))}
-          </div>
-        ) : (
-          <div className="detached">
-            <p>No parameters — edit the code directly.</p>
-            <button className="btn small" onClick={() => editClipCode(clip.id)}>Edit code</button>
-          </div>
-        )}
-      </Section>
-      <TransformSection clip={clip} />
+            ))
+          ) : (
+            <div className="detached">
+              <p>No parameters — edit the code directly.</p>
+              <button className="btn small" onClick={() => editClipCode(clip.id)}>Edit code</button>
+            </div>
+          )}
+        </div>
+      </section>
+      <TransformFields clip={clip} />
     </>
   );
 }
@@ -334,168 +305,6 @@ function LayoutBinding({ clip }: { clip: Clip }) {
         </button>
       )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------- animation tab
-function AnimTab({ clip, focus }: { clip: Clip; focus: Focus }) {
-  const library = useStore((s) => s.library)!;
-  const project = useStore((s) => s.project);
-  const { begin, edit } = useClipEdit(clip.id);
-  const anims = library.animations;
-  const labels = (list: { id: string; label: string }[]) => Object.fromEntries(list.map((a) => [a.id, a.label]));
-  const rates = anims.rates;
-  const isTransform = clip.exit.type === 'TransformInto' || clip.exit.type === 'TransformMatching';
-  const others = project.clips.filter((c) => c.id !== clip.id);
-  const target = clip.exit.target ? project.clips.find((c) => c.id === clip.exit.target) : null;
-  const end = clip.start + clip.duration;
-
-  const linkTarget = (tid: string) => {
-    begin();
-    useStore.getState().commit((p) => {
-      const c = p.clips.find((c) => c.id === clip.id)!;
-      const t = p.clips.find((c) => c.id === tid);
-      c.exit = { ...c.exit, target: tid || null };
-      if (t) {
-        // the target appears exactly when the morph finishes
-        t.start = round(c.start + c.duration, 3);
-        t.enter = { ...t.enter, type: 'none' };
-        // …and continues on the same track, so the timeline shows one object changing shape
-        joinMorphTrack(p, c, t);
-        resolveOverlap(p, t.id);
-      }
-    }, { transient: true });
-  };
-
-  const name = (id: string, list: { id: string; label: string }[]) => labels(list)[id] || id;
-  // Type, start, length, track and effect placement are all edited on the timeline clip itself.
-  // This tab only holds what the timeline can't do: easing, morph targets, effect length / removal,
-  // and adding an enter / exit animation when there is none (the clip has no zone to click then).
-  return (
-    <>
-      <Section id="enter" signal={focus?.section === 'enter' ? focus.n : 0} icon={<LogIn size={13} />} title="Enter animation" right={clip.enter.type !== 'none' && <span className="anim-name"><AnimIcon id={clip.enter.type} size={12} /> {name(clip.enter.type, anims.enter)}</span>}>
-        {clip.enter.type === 'none' ? (
-          <AnimPicker kind="enter" value={clip.enter.type} options={anims.enter} testid="enter-picker" clipId={clip.id} onChange={(v) => { begin(); edit((c) => { c.enter = { ...c.enter, type: v, duration: c.enter.duration || 1 }; }); }} />
-        ) : (
-          <SelectField label="Easing" value={clip.enter.rate || 'smooth'} options={rates} onBegin={begin} onChange={(v) => edit((c) => { c.enter = { ...c.enter, rate: v }; })} />
-        )}
-      </Section>
-      <Section id="exit" signal={focus?.section === 'exit' ? focus.n : 0} icon={<LogOut size={13} />} title="Exit animation" right={clip.exit.type !== 'none' && <span className="anim-name"><AnimIcon id={clip.exit.type} size={12} /> {name(clip.exit.type, anims.exit)}</span>}>
-        {clip.exit.type === 'none' ? (
-          <AnimPicker kind="exit" value={clip.exit.type} options={anims.exit} testid="exit-picker" clipId={clip.id} onChange={(v) => { begin(); edit((c) => { c.exit = { ...c.exit, type: v, duration: c.exit.duration || 1 }; }); }} />
-        ) : (
-          <SelectField label="Easing" value={clip.exit.rate || 'smooth'} options={rates} onBegin={begin} onChange={(v) => edit((c) => { c.exit = { ...c.exit, rate: v }; })} />
-        )}
-        {isTransform && (
-          <>
-            <SelectField
-              label="Into"
-              value={clip.exit.target || ''}
-              options={['', ...others.map((c) => c.id)]}
-              labels={{ '': '— choose a clip —', ...Object.fromEntries(others.map((c) => [c.id, c.name])) }}
-              onBegin={() => {}}
-              onChange={linkTarget}
-            />
-            {!target && <div className="hint warn">Pick the clip this one morphs into. It will be moved to start at {end.toFixed(2)}s.</div>}
-            {target && Math.abs(target.start - end) > 0.02 && (
-              <div className="hint warn">
-                “{target.name}” starts at {target.start.toFixed(2)}s, not when this clip ends.{' '}
-                <a onClick={() => linkTarget(target.id)}>Fix</a>
-              </div>
-            )}
-            {clip.exit.type === 'TransformMatching' && <div className="hint">Matches identical glyphs between two Tex / Text objects (great for equation steps).</div>}
-          </>
-        )}
-      </Section>
-      <PartsSection clip={clip} focus={focus} />
-      {clip.effects.length > 0 && (
-        <Section id="effects" signal={focus?.section === 'effects' ? focus.n : 0} mark={focus?.section === 'effects' ? focus.effectId : undefined} icon={<Sparkles size={13} />} title="Effects">
-          {clip.effects.map((ef) => (
-            <div key={ef.id} className={`effect-row ${focus?.effectId === ef.id ? 'on' : ''}`} data-effect={ef.id}>
-              <AnimPicker
-                kind="effect"
-                value={ef.type}
-                options={anims.effects}
-                testid={`effect-type-${ef.id}`}
-                clipId={clip.id}
-                effId={ef.id}
-                onChange={(v) => { begin(); edit((c) => { const x = c.effects.find((x) => x.id === ef.id); if (x) x.type = v; }); }}
-              />
-              <NumberField label="for" value={ef.duration} step={0.1} min={0.1} suffix="s" onBegin={begin} onChange={(v) => edit((c) => { const x = c.effects.find((x) => x.id === ef.id); if (x) x.duration = v; })} />
-              <button className="mini" title="Remove effect" onClick={() => { begin(); edit((c) => { c.effects = c.effects.filter((x) => x.id !== ef.id); }); }}><X size={13} /></button>
-            </div>
-          ))}
-        </Section>
-      )}
-    </>
-  );
-}
-
-/** Group clips: timing of the selected part (submobject), stagger, reset. Rows on the timeline do the dragging. */
-function PartsSection({ clip, focus }: { clip: Clip; focus: Focus }) {
-  const tree = useClipParts(clip);
-  const library = useStore((s) => s.library)!;
-  const sel = useStore((s) => (s.selectedPart?.clip === clip.id ? s.selectedPart.path : null));
-  const open = useStore((s) => s.partsOpen.includes(clip.id));
-  const { begin, edit } = useClipEdit(clip.id);
-  if (!isGroupTree(tree) && !clip.parts) return null;
-  const anims = library.animations;
-  const node = sel !== null ? findNode(tree, sel) : null;
-  const tm = sel !== null ? partTiming(clip, sel) : null;
-  const own = timedParts(clip);
-  const nMoved = Object.values(clip.parts || {}).filter(hasOffset).length;
-  const nKids = tree?.children?.length ?? 0;
-  const commitPart = (patch: Parameters<typeof setPart>[2]) => { begin(); edit((c) => setPart(c, sel!, patch)); };
-  const showRows = () => !open && useStore.setState({ partsOpen: [...useStore.getState().partsOpen, openKey(clip.id, '')] });
-  return (
-    <Section id="parts" signal={focus?.section === 'parts' ? focus.n : 0} icon={<ListTree size={13} />} title="Parts" right={<span className="muted small">{nKids} parts{own.length ? ` · ${own.length} timed` : ''}{nMoved ? ` · ${nMoved} moved` : ''}</span>}>
-      <div className="hint">Each part of this group can appear, animate, leave and be moved on its own. Show the parts on the timeline and drag their bars, or stagger them. Double-click the clip in the viewer to pick a part and drag it.</div>
-      <div className="row-btns">
-        <button className="btn small" data-testid="parts-show" onClick={() => useStore.setState({ partsOpen: open ? useStore.getState().partsOpen.filter((k) => k !== clip.id && !k.startsWith(clip.id + '|')) : [...useStore.getState().partsOpen, clip.id] })}>
-          <ListTree size={13} /> {open ? 'Hide on timeline' : 'Show on timeline'}
-        </button>
-        <button className="btn small" disabled={!own.length && !nMoved} title="Every part follows the clip again and goes back where its code puts it" onClick={() => { begin(); edit((c) => resetPart(c, '', true, 'all')); }}><RotateCcw size={13} /> Reset all</button>
-      </div>
-      <div className="parts-stagger">
-        <span className="muted small">Stagger {sel !== null && node?.children?.length ? `“${partName(node)}”` : 'parts'}</span>
-        {[0.1, 0.25, 0.5, 1].map((step) => (
-          <button key={step} className="btn small" data-testid={`stagger-${step}`} disabled={!tree} onClick={() => { begin(); edit((c) => staggerParts(c, tree!, sel !== null && node?.children?.length ? sel : '', step)); showRows(); }}>{step}s</button>
-        ))}
-      </div>
-      {sel !== null && tm && (
-        <div className="part-edit" data-testid="part-edit">
-          <div className="part-edit-title">
-            <b>{node ? partName(node) : `part ${sel}`}</b> <span className="muted small">{node?.type}{tm.own ? '' : tm.custom ? ' · timing from its group' : ' · follows the clip'}</span>
-          </div>
-          <NumberField label="Appears" value={round(clip.start + tm.at, 3)} step={0.05} min={clip.start} max={clip.start + tm.until} suffix="s" testid="part-at" onBegin={begin} onChange={(v) => edit((c) => setPart(c, sel, { at: round(v - c.start, 3) }))} />
-          <NumberField label="Leaves" value={round(clip.start + tm.until, 3)} step={0.05} min={clip.start + tm.at} max={clip.start + clip.duration} suffix="s" testid="part-until" onBegin={begin} onChange={(v) => edit((c) => setPart(c, sel, { until: v >= c.start + c.duration - 1e-6 ? null : round(v - c.start, 3) }))} />
-          <div className="part-anim-row">
-            <span className="muted small">Enter</span>
-            <AnimPicker kind="enter" value={tm.enter.type} options={anims.enter} testid="part-enter-picker" clipId={clip.id} part={sel} onChange={(v) => commitPart({ enter: { ...tm.enter, type: v, duration: tm.enter.duration || 0.5 } })} />
-          </div>
-          {tm.enter.type !== 'none' && (
-            <NumberField label="for" value={tm.enter.duration} step={0.05} min={0.05} suffix="s" onBegin={begin} onChange={(v) => edit((c) => setPart(c, sel, { enter: { ...tm.enter, duration: v } }))} />
-          )}
-          <div className="part-anim-row">
-            <span className="muted small">Exit</span>
-            <AnimPicker kind="exit" value={tm.exit.type} options={anims.exit.filter((a) => a.id !== 'TransformInto' && a.id !== 'TransformMatching')} testid="part-exit-picker" clipId={clip.id} part={sel} onChange={(v) => commitPart({ exit: { ...tm.exit, type: v, duration: tm.exit.duration || 0.5 } })} />
-          </div>
-          {tm.exit.type !== 'none' && (
-            <NumberField label="for" value={tm.exit.duration} step={0.05} min={0.05} suffix="s" onBegin={begin} onChange={(v) => edit((c) => setPart(c, sel, { exit: { ...tm.exit, duration: v } }))} />
-          )}
-          <PartStyle clip={clip} label={node?.label} />
-          <div className="grid2" title="How far this part is moved from where the clip's code puts it (in the clip's own units). Drag the part in the viewer to move it.">
-            <NumberField label="Move X" value={round(clip.parts?.[sel]?.dx || 0, 3)} step={0.05} testid="part-dx" onBegin={begin} onChange={(v) => edit((c) => movePart(c, sel, v, c.parts?.[sel]?.dy || 0))} />
-            <NumberField label="Move Y" value={round(clip.parts?.[sel]?.dy || 0, 3)} step={0.05} testid="part-dy" onBegin={begin} onChange={(v) => edit((c) => movePart(c, sel, c.parts?.[sel]?.dx || 0, v))} />
-          </div>
-          <div className="row-btns">
-            <button className="btn small" disabled={!tm.own} onClick={() => { begin(); edit((c) => resetPart(c, sel)); }}><RotateCcw size={13} /> Follow the clip</button>
-            <button className="btn small" data-testid="part-put-back" disabled={!hasOffset(clip.parts?.[sel])} onClick={() => { begin(); edit((c) => resetPart(c, sel, false, 'position')); }}><Move size={13} /> Put back</button>
-          </div>
-        </div>
-      )}
-      {sel === null && <div className="hint">Click a part's bar on the timeline, or double-click it in the viewer, to edit its timing and position here.</div>}
-    </Section>
   );
 }
 
@@ -692,6 +501,7 @@ export default function Inspector() {
 
   if (selection.length > 1) {
     const sel = clips.filter((c) => selection.includes(c.id));
+    const groupWhy = groupProblem(selection);
     return (
       <aside className="panel inspector">
         <div className="panel-head"><span>Inspector</span></div>
@@ -704,10 +514,11 @@ export default function Inspector() {
             {sel.map((c) => <div key={c.id} onClick={() => useStore.setState({ selection: [c.id] })}>{c.name}</div>)}
           </div>
           <div className="row-btns">
+            <button className="btn small primary" data-testid="group-clips" disabled={!!groupWhy} title={groupWhy || 'Make one VGroup clip of them (⌘G) — each keeps its position and timing'} onClick={groupSelection}><Boxes size={13} /> Group</button>
             <button className="btn small" onClick={duplicateSelection}><Copy size={13} /> Duplicate</button>
             <button className="btn small danger" onClick={deleteSelection}><Trash2 size={13} /> Delete</button>
           </div>
-          <p className="muted small">Drag them together in the preview or the timeline.</p>
+          <p className="muted small">{groupWhy && sel.length > 1 ? groupWhy + '. ' : ''}Drag them together in the preview or the timeline.</p>
         </div>
       </aside>
     );
@@ -823,8 +634,7 @@ function ClipInspector({ clip, error }: { clip: Clip; error?: string }) {
       </div>
       {error && <div className="ins-error" onClick={() => editClipCode(clip.id)}><AlertTriangle size={12} /> {error}</div>}
       <div className="ins-scroll" key={clip.id}>
-        <PropsTab clip={clip} focus={focus} />
-        <AnimTab clip={clip} focus={focus} />
+        <ClipFields clip={clip} focus={focus} />
       </div>
     </aside>
   );

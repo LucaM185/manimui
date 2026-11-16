@@ -47,7 +47,7 @@ const tcard = (n) => `[data-testid=trash-card]:has(.proj-name:text-is("${n}"))`;
 const slots = () => { try { return fs.readdirSync(TRASH).filter((d) => !d.startsWith('.')); } catch (e) { return []; } };
 const inTrash = (n) => slots().some((id) => fs.existsSync(path.join(TRASH, id, `${n}.mstudio`)));
 const favs = () => JSON.parse(fs.readFileSync(path.join(STATE, 'favorite-projects.json'), 'utf8')).map((p) => path.basename(p, '.mstudio'));
-const openPopup = async () => { await win.click('[data-testid=projects-btn]'); await win.waitForSelector('[data-testid=project-card][data-path]'); };
+const openPopup = async () => { await win.click('[data-testid=tb-projects]'); await win.waitForSelector('[data-testid=project-card][data-path]'); };
 const trashBtn = () => win.textContent('[data-testid=projects-trash]');
 const confirms = () => app.evaluate(() => (global.__msConfirms || []).length);
 

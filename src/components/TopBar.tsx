@@ -1,33 +1,51 @@
+import { Code2, Download, LayoutGrid, Settings } from 'lucide-react';
 import { useStore } from '../store';
-import { ChevronDown, Code2, Download, LayoutGrid } from 'lucide-react';
+import { hasUpdate, useUpdate } from '../updates';
 import RecentStrip from './RecentStrip';
 
-// Chrome-like title bar: Projects on the left, then one tab per project (the one on screen merges
-// into the panels below and holds the editable name), free space to drag the window, Code/Export.
+type Flag = 'projectsOpen' | 'codeOpen' | 'exportOpen' | 'settingsOpen';
+
+const ACTIONS: { id: string; label: string; icon: React.ReactNode; shortcut: string; flag: Flag; extra?: object }[] = [
+  { id: 'projects', label: 'Projects', icon: <LayoutGrid size={16} />, shortcut: '⌘P', flag: 'projectsOpen' },
+  { id: 'code', label: 'Code', icon: <Code2 size={16} />, shortcut: '⇧⌘C', flag: 'codeOpen', extra: { codeClip: null } },
+  { id: 'export', label: 'Export', icon: <Download size={16} />, shortcut: '⌘E', flag: 'exportOpen' },
+  { id: 'settings', label: 'Settings', icon: <Settings size={16} />, shortcut: '⌘,', flag: 'settingsOpen' },
+];
+
+// Chrome-like title bar: one tab per project (the one on screen merges into the panels below and
+// holds the editable name), free space to drag the window, and a row of small icon buttons on the
+// right that open every popup (Projects, Code, Export, Settings). Hovering one shows its name and
+// shortcut in a tooltip.
 export default function TopBar() {
-  const codeOpen = useStore((s) => s.codeOpen);
-  const projectsOpen = useStore((s) => s.projectsOpen);
+  const updateDot = useUpdate((u) => hasUpdate(u.status));
+  const open: Record<Flag, boolean> = {
+    projectsOpen: useStore((s) => s.projectsOpen),
+    codeOpen: useStore((s) => s.codeOpen),
+    exportOpen: useStore((s) => s.exportOpen),
+    settingsOpen: useStore((s) => s.settingsOpen),
+  };
 
   return (
     <header className="topbar">
-      <div className="title">
-        <button
-          className={`btn projects-btn ${projectsOpen ? 'active' : ''}`}
-          onClick={() => useStore.setState({ projectsOpen: !useStore.getState().projectsOpen })}
-          title="Browse and switch projects (⌘P)"
-          data-testid="projects-btn"
-        >
-          <LayoutGrid size={14} /> Projects <ChevronDown size={13} className="chev" />
-        </button>
-      </div>
       <RecentStrip />
-      <div className="tb-group right">
-        <button className={`btn ${codeOpen ? 'active' : 'ghost'}`} onClick={() => { const s = useStore.getState(); if (s.codeClip) useStore.setState({ codeOpen: true, codeClip: null }); else useStore.setState({ codeOpen: !s.codeOpen }); }} title="Show the generated ManimGL code (⇧⌘C)">
-          <Code2 size={15} /> Code
-        </button>
-        <button className="btn primary" onClick={() => useStore.setState({ exportOpen: true })} title="Render a video with manimgl (⌘E)" data-testid="export-btn">
-          <Download size={15} /> Export
-        </button>
+      <div className="tb-group right tb-actions" data-testid="app-actions">
+        {ACTIONS.map((a) => (
+          <button
+            key={a.id}
+            className={`btn ghost tb-icon ${open[a.flag] ? 'active' : ''}`}
+            onClick={() => useStore.setState({ [a.flag]: !open[a.flag], ...(open[a.flag] ? {} : a.extra) })}
+            aria-label={a.label}
+            data-testid={`tb-${a.id}`}
+          >
+            {a.icon}
+            {a.id === 'settings' && updateDot && !open.settingsOpen && <span className="upd-dot" data-testid="update-dot" />}
+            <span className="tb-tip" role="tooltip">
+              {a.label}
+              {a.id === 'settings' && updateDot ? ' · update available' : ''}
+              <kbd>{a.shortcut}</kbd>
+            </span>
+          </button>
+        ))}
       </div>
     </header>
   );

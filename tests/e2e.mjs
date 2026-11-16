@@ -255,8 +255,8 @@ px = await pixelAt(mid.x, mid.y);
 check(px[1] > 200 && px[0] < 90, `after reordering, green is in front (${px})`);
 await shot('zorder');
 
-// ---------------------------------------------------------------- 7. keyframes
-console.log('7. keyframe animation by dragging at two different times');
+// ---------------------------------------------------------------- 7. moving over time = transform here
+console.log('7. no clip keyframes: T splits the clip and the copy is moved');
 await S(() => window.__ms.store.getState().loadProject({ version: 1, settings: { name: 'k', duration: 6, fps: 30, background: '#1e1e1e', resolution: [1920, 1080] }, tracks: [{ id: 'A', name: 'A' }], clips: [], assets: [] }, null));
 const dotId = await S(() => window.__ms.actions.addItem('star', { time: 0, track: 'A', x: -4, y: 0 }));
 await S((id) => {
@@ -269,7 +269,13 @@ await win.locator('.overlay').click({ position: { x: 1, y: 1 } }); // focus stag
 await S((id) => window.__ms.store.setState({ selection: [id] }), dotId);
 await win.keyboard.press('k');
 st = await state();
-check(st.project.clips[0].keys.length === 1, 'K adds a keyframe');
+check(st.project.clips[0].keys.length === 0, 'K does not add clip keyframes');
+await setTime(2);
+await win.keyboard.press('t');
+st = await state();
+check(st.project.clips.length === 2, `T adds a transform: the clip is split (${st.project.clips.length} clips)`);
+const copyId = st.selection[0];
+check(copyId && copyId !== dotId, 'the copy is selected for moving');
 await setTime(3.5);
 st = await waitFrame();
 b = await stageBox();
@@ -280,20 +286,17 @@ await win.mouse.down();
 await win.mouse.move(to.x, to.y, { steps: 10 });
 await win.mouse.up();
 st = await state();
-const keys = st.project.clips[0].keys;
-check(keys.length === 2, `dragging at another time creates a second keyframe (${keys.length})`);
-check(keys[1] && near(keys[1].x, 4, 0.15) && near(keys[1].y, 2, 0.15), 'second keyframe has the dragged position');
-await setTime(2.0);
-st = await waitFrame();
-const info = st.meta.clips[dotId];
-check(info && info.x > -3.9 && info.x < 3.9, `position is interpolated in between (x=${info?.x.toFixed(2)})`);
-check(await win.locator('.kf').count() === 2, 'keyframe diamonds shown on the clip');
-await shot('keyframes');
+const cp = st.project.clips.find((c) => c.id === copyId);
+const orig = st.project.clips.find((c) => c.id === dotId);
+check(cp && near(cp.transform.x, 4, 0.15) && near(cp.transform.y, 2, 0.15), 'dragging moves the copy');
+check(orig && near(orig.transform.x, -4, 1e-6) && !orig.keys.length && !cp.keys.length, 'the first half stays put, no keyframes anywhere');
+check(await win.locator('.kf').count() === 0, 'no keyframe diamonds on the timeline');
+await shot('transform-move');
+await S((id) => window.__ms.store.getState().commit((p) => { p.clips = p.clips.filter((c) => c.id === id); const c = p.clips[0]; c.exit = { type: 'none', duration: 1, rate: 'smooth' }; c.duration = 5; }), dotId);
 
 // ---------------------------------------------------------------- 8. inspector params + code
 console.log('8. inspector parameters and code editing');
 await S((id) => window.__ms.store.setState({ selection: [id], rightTab: 'inspector' }), dotId);
-await win.locator('.ins-section h5', { hasText: 'Parameters' }).click();
 await win.waitForSelector('[data-testid="param-points"]');
 await win.fill('[data-testid="param-points"]', '8');
 await win.press('[data-testid="param-points"]', 'Enter');
@@ -321,28 +324,26 @@ check(!st.meta.errors[dotId], 'fixing the code clears the error');
 check(st.project.clips[0].code?.includes('fill_color=RED'), 'custom code stored on the clip');
 await shot('code-edit');
 
-// ---------------------------------------------------------------- 9. animation sections
-console.log('9. enter/exit/effects in the inspector');
+// ---------------------------------------------------------------- 9. animations live on the timeline
+console.log('9. enter / exit / effects are edited on the timeline clip, not in the inspector');
+await S(() => window.__ms.store.setState({ codeOpen: false })); // the code popup from step 8 covers the timeline
+await win.waitForTimeout(200);
 {
-  // timing, animation types and effect placement live on the timeline clip — the tab doesn't repeat them
-  const heads = await win.locator('.ins-section h5').allInnerTexts();
-  check(!heads.some((h) => /timing/i.test(h)), `animation tab has no Timing section (${heads.join(' | ').replace(/\s+/g, ' ')})`);
-  check(await win.locator('text=Add at playhead').count() === 0, 'no duplicate "Add at playhead" button');
+  check(await win.locator('.inspector .ins-section h5').count() === 0, 'clip inspector has no section titles (parameters + transform, always open)');
+  for (const sec of ['enter', 'exit', 'parts', 'effects']) check(await win.locator(`.inspector [data-section="${sec}"]`).count() === 0, `no ${sec} section in the inspector`);
 }
-// with an animation set the tab shows only its easing; with none, it offers the picker (the clip has no zone to click)
-await S(() => window.__ms.store.getState().commit((p) => { p.clips[0].enter = { ...p.clips[0].enter, type: 'FadeIn' }; p.clips[0].exit = { ...p.clips[0].exit, type: 'FadeOut' }; }));
-await win.waitForTimeout(100);
-await win.locator('.ins-section h5', { hasText: 'Enter animation' }).click();
-await win.locator('.ins-section h5', { hasText: 'Exit animation' }).click();
-check(await win.locator('[data-testid="enter-picker"]').count() === 0 && await win.locator('[data-testid="exit-picker"]').count() === 0, 'no enter / exit pickers when the clip already has them');
-check(await win.locator('.ins-section .field:has-text("Easing")').count() === 2, 'enter and exit easing are still editable');
-await S(() => window.__ms.store.getState().commit((p) => { p.clips[0].enter = { ...p.clips[0].enter, type: 'none' }; p.clips[0].exit = { ...p.clips[0].exit, type: 'none' }; }));
-await win.waitForTimeout(100);
-check(await win.locator(`.clip[data-clip="${(await state()).project.clips[0].id}"] [data-zone]`).count() === 0, 'a clip without enter / exit has no zones on the timeline');
-await win.click('[data-testid="enter-picker"]');
-await win.waitForSelector('[data-testid="enter-picker-pop"]');
+{
+  const cid0 = (await state()).project.clips[0].id;
+  await S(() => window.__ms.store.getState().commit((p) => { p.clips[0].enter = { ...p.clips[0].enter, type: 'none' }; p.clips[0].exit = { ...p.clips[0].exit, type: 'none' }; }));
+  await win.waitForTimeout(100);
+  check(await win.locator(`.clip[data-clip="${cid0}"] .clip-enter, .clip[data-clip="${cid0}"] .clip-exit`).count() === 0, 'a clip without enter / exit has no shaded parts');
+  check(await win.locator(`.clip[data-clip="${cid0}"] [data-testid="add-enter"]`).count() === 1 && await win.locator(`.clip[data-clip="${cid0}"] [data-testid="add-exit"]`).count() === 1, 'it offers + to add them');
+  await win.locator(`.clip[data-clip="${cid0}"]`).hover();
+  await win.click(`.clip[data-clip="${cid0}"] [data-testid="add-enter"]`);
+}
+await win.waitForSelector('[data-testid="tl-anim-pop"]');
 const timeBefore = (await state()).time;
-await win.hover('[data-testid="enter-picker-pop"] .anim-tile[data-anim="Write"]');
+await win.hover('[data-testid="tl-anim-pop"] .anim-tile[data-anim="Write"]');
 await win.waitForSelector('[data-testid="anim-live"]', { timeout: 3000 }).catch(() => {});
 const badge = await win.locator('[data-testid="anim-live"]').innerText().catch(() => '');
 check(badge.includes('Write'), `hovering a tile previews it live in the main viewer (${badge.trim()})`);
@@ -356,29 +357,47 @@ check(ap && ap.enter === 'Write' && ap.real !== 'Write', `preview applies Write 
   for (let i = 0; i < 12; i++) { seen.add(await sig()); await win.waitForTimeout(120); }
   check(seen.size >= 3, `main viewer animates while previewing (${seen.size} distinct frames)`);
 }
-await win.hover('[data-testid="enter-picker-pop"] .anim-tile[data-anim="FadeIn"]');
+await win.hover('[data-testid="tl-anim-pop"] .anim-tile[data-anim="FadeIn"]');
 await win.waitForTimeout(200);
 check((await win.locator('[data-testid="anim-live"]').innerText()).includes('Fade In'), 'moving to another tile switches the live preview');
 await shot('anim-picker');
-await win.click('[data-testid="enter-picker-pop"] .anim-tile[data-anim="SpinIn"]');
+await win.click('[data-testid="tl-anim-pop"] .anim-tile[data-anim="SpinIn"]');
 await win.waitForTimeout(100);
 check(await win.locator('[data-testid="anim-live"]').count() === 0 && (await S(() => window.__ms.store.getState().animPreview)) === null, 'picking closes the live preview');
 st = await waitFrame();
 check(near(st.time, timeBefore, 1e-6) && st.fresh, 'viewer returns to the playhead frame after the preview');
-check(await win.locator('[data-testid="enter-picker"]').count() === 0, 'enter picker gives way to easing once an animation is set');
-await win.click('[data-testid="exit-picker"]');
-await win.click('[data-testid="exit-picker-pop"] .anim-tile[data-anim="Uncreate"]');
 {
-  // effects are added from the clip's context menu on the timeline
   const cid = (await state()).project.clips[0].id;
+  check(await win.locator(`.clip[data-clip="${cid}"] .clip-enter`).count() === 1 && await win.locator(`.clip[data-clip="${cid}"] [data-testid="add-enter"]`).count() === 0, 'the + gives way to the shaded enter part');
+  await win.locator(`.clip[data-clip="${cid}"]`).hover();
+  await win.click(`.clip[data-clip="${cid}"] [data-testid="add-exit"]`);
+  await win.waitForSelector('[data-testid="tl-anim-pop"]');
+  check(await win.locator('[data-testid="tl-anim-pop"] .anim-tile[data-anim="TransformInto"]').count() === 0, 'the exit chooser has no morphs (that is "Add transform here")');
+  await win.click('[data-testid="tl-anim-pop"] .anim-tile[data-anim="Uncreate"]');
+  // effects are added from the clip's context menu on the timeline
   const cb = await win.locator(`.clip[data-clip="${cid}"]`).boundingBox();
   await win.mouse.click(cb.x + cb.width / 2, cb.y + 10, { button: 'right' });
+  const items = await win.locator('.ctx-menu .ctx-item').allInnerTexts();
+  check(!items.some((t) => /keyframe/i.test(t)), `clip menu has no keyframe item (${items.map((t) => t.split('\n')[0]).join(' | ')})`);
   await win.hover('.ctx-item:has-text("Add effect at playhead")');
   await win.click('.ctx-menu.sub .ctx-item:has(.ctx-label:text-is("Indicate"))');
+  await win.waitForTimeout(100);
+  const eb = await win.locator(`.clip[data-clip="${cid}"] .clip-effect`).boundingBox();
+  await win.mouse.click(eb.x + 4, eb.y + eb.height / 2);
+  await win.waitForSelector('[data-testid="tl-anim-pop"]', { timeout: 3000 }).catch(() => {});
+  check(await win.locator('[data-testid="tl-anim-pop"] .anim-tile.on[data-anim="Indicate"]').count() === 1, 'clicking the effect opens its chooser on the timeline');
+  check(await win.locator('[data-testid="tl-anim-remove"]').count() === 1, 'the effect chooser can remove it');
+  await win.keyboard.press('Escape');
+  // its right edge changes the length
+  const eb2 = await win.locator(`.clip[data-clip="${cid}"] .clip-effect .eff-handle`).boundingBox();
+  const d0 = (await state()).project.clips[0].effects[0].duration;
+  await win.mouse.move(eb2.x + eb2.width / 2, eb2.y + eb2.height / 2);
+  await win.mouse.down();
+  await win.mouse.move(eb2.x + eb2.width / 2 + 40, eb2.y + eb2.height / 2, { steps: 5 });
+  await win.mouse.up();
+  const d1 = (await state()).project.clips[0].effects[0].duration;
+  check(d1 > d0 + 0.1, `dragging the effect's right edge lengthens it (${d0} → ${d1})`);
 }
-await win.waitForTimeout(100);
-await win.locator('.ins-section h5', { hasText: 'Effects' }).click();
-check(await win.locator('.effect-row').count() === 1 && (await win.locator('.effect-row .anim-lbl').innerText()).includes('Indicate'), 'effect shows in the inspector with its name, length and remove button');
 st = await state();
 check(st.project.clips[0].enter.type === 'SpinIn' && st.project.clips[0].exit.type === 'Uncreate', 'enter/exit types changed');
 check(st.project.clips[0].effects.length === 1, 'effect added');
@@ -454,28 +473,22 @@ console.log('9b. clicking the enter / exit part of a clip opens its chooser');
   const z0 = st.project.clips[0].start;
   await win.mouse.move(zb.x + zb.width / 2, zb.y + zb.height / 2);
   await win.mouse.down();
-  await win.mouse.move(zb.x + zb.width / 2 + zoom * 0.5, zb.y + zb.height / 2, { steps: 6 });
+  const zoomHere = (await state()).zoom; // timeline zoom fits each project, so read it now
+  await win.mouse.move(zb.x + zb.width / 2 + zoomHere * 0.5, zb.y + zb.height / 2, { steps: 6 });
   await win.mouse.up();
   st = await state();
   check(st.project.clips[0].start > z0 + 0.3, `dragging the enter part moves the clip (${z0} → ${st.project.clips[0].start})`);
   check(await popVisible() === null, 'no chooser after a drag');
   await win.keyboard.press('Meta+z');
 
-  // effects: click opens that effect in the inspector (not the timeline chooser)
+  // effects: click opens that effect's chooser on the timeline (change type / remove)
   const eb = await win.locator(`.clip[data-clip="${cid}"] .clip-effect`).first().boundingBox();
   const at0 = st.project.clips[0].effects[0].at;
-  const effId = st.project.clips[0].effects[0].id;
-  await win.mouse.click(eb.x + eb.width / 2, eb.y + eb.height / 2);
+  await win.mouse.click(eb.x + 4, eb.y + eb.height / 2);
   title = await popVisible();
-  check(title === null, `clicking an effect does not open the timeline chooser (${title})`);
-  const shown = await S(() => { const s = window.__ms.store.getState(); return { tab: s.rightTab, section: s.inspectorFocus && s.inspectorFocus.section, eff: s.inspectorFocus && s.inspectorFocus.effectId }; });
-  check(shown.tab === 'inspector' && shown.section === 'effects' && shown.eff === effId, `clicking an effect opens it in the inspector (${JSON.stringify(shown)})`);
-  await win.waitForSelector(`.effect-row.on[data-effect="${effId}"]`);
-  check(await win.locator(`.effect-row.on[data-effect="${effId}"]`).count() === 1, 'the clicked effect is highlighted in the inspector');
-  await win.click(`[data-testid="effect-type-${effId}"]`);
-  await win.waitForSelector(`[data-testid="effect-type-${effId}-pop"]`);
-  const other = await win.evaluate((id) => [...document.querySelectorAll(`[data-testid="effect-type-${id}-pop"] .anim-tile:not(.on)`)].map((b) => b.dataset.anim)[0], effId);
-  await win.click(`[data-testid="effect-type-${effId}-pop"] .anim-tile[data-anim="${other}"]`);
+  check(title && title.startsWith('Effect'), `clicking an effect opens its chooser (${title})`);
+  const other = await win.evaluate(() => [...document.querySelectorAll('[data-testid="tl-anim-pop"] .anim-tile:not(.on)')].map((b) => b.dataset.anim)[0]);
+  await win.click(`[data-testid="tl-anim-pop"] .anim-tile[data-anim="${other}"]`);
   st = await state();
   check(st.project.clips[0].effects[0].type === other && st.project.clips[0].effects[0].at === at0, `effect changed to ${other} without moving`);
   for (const t of [0.3, 4.8]) {
@@ -787,7 +800,7 @@ console.log('12d. semantic library search');
 
 // ---------------------------------------------------------------- 13. code panel, save, export
 console.log('13. code panel, save, export');
-await win.click('button:has-text("Code")');
+await win.click('[data-testid=tb-code]');
 await win.waitForTimeout(800);
 const scene = await win.locator('[data-testid="scene-code"] .cm-content').innerText();
 check(scene.includes('from studio_runtime import *') && scene.includes('def make_'), 'code panel shows the generated ManimGL scene');

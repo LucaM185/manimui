@@ -40,7 +40,7 @@ await menu('save');
 await win.waitForFunction(() => !!window.__ms.store.getState().filePath, null, { timeout: 5000 });
 check(await userCards(win) === null, 'no “My mobjects” section before making one');
 
-await win.click('[data-testid=projects-btn]'); await win.waitForSelector(cardSel('Pythagoras'));
+await win.click('[data-testid=tb-projects]'); await win.waitForSelector(cardSel('Pythagoras'));
 await win.hover(cardSel('Pythagoras'));
 await win.click(`${cardSel('Pythagoras')} [data-testid=project-more]`);
 const label = await win.$eval('.ctx-item:has-text("mobject")', (e) => e.textContent);
@@ -120,7 +120,7 @@ console.log('▸ pro plan');
 uc = await userCards(win);
 check(uc && uc.length === 2, `mobjects persist across launches (${uc?.length})`);
 await win.waitForFunction(() => document.querySelectorAll('.library .lib-card img').length > 3, null, { timeout: 30000 }).catch(() => {});
-await win.click('[data-testid=projects-btn]'); await win.waitForSelector(cardSel('Pythagoras'));
+await win.click('[data-testid=tb-projects]'); await win.waitForSelector(cardSel('Pythagoras'));
 await win.hover(cardSel('Pythagoras'));
 await win.click(`${cardSel('Pythagoras')} [data-testid=project-more]`);
 await win.click('.ctx-item:has-text("Update mobject")');

@@ -546,6 +546,32 @@ def keep_origin(mob, point=ORIGIN):
     return mob
 
 
+def place_part(mob, x=0.0, y=0.0, z=0.0, scale=1.0, rotation=0.0, rx=0.0, ry=0.0, opacity=1.0, offsets=None):
+    """One element of a group: centred like a clip, its moved parts shifted, then placed with the
+    clip transform it had on its own (coordinates relative to the group's origin)."""
+    mob.move_to(ORIGIN)
+    if offsets:
+        apply_part_offsets(mob, {str(k): tuple(v) for k, v in offsets.items()})
+    apply_transform(mob, {"x": x, "y": y, "z": z, "scale": scale, "rotation": rotation, "rx": rx, "ry": ry, "opacity": opacity})
+    return mob
+
+
+def group_of(*mobs):
+    """A VGroup of the elements (a Group when one is not vectorised, e.g. an image), padded with
+    invisible points so it stays centred on its origin: elements never shift when another one
+    grows, moves or is hidden."""
+    grp = (VGroup if all(isinstance(m, VMobject) for m in mobs) else Group)(*mobs)
+    if mobs:
+        keep_origin(grp)
+    return grp
+
+
+def part_time(t, start, duration):
+    """(t, a) for an animated element of a group that starts `start` s into the group."""
+    u = min(max(float(t) - start, 0.0), duration)
+    return u, (u / duration if duration else 0.0)
+
+
 TRANSFORM_KEYS = ("x", "y", "z", "scale", "rotation", "rx", "ry", "opacity")
 DEFAULT_TRANSFORM = {"x": 0.0, "y": 0.0, "z": 0.0, "scale": 1.0, "rotation": 0.0, "rx": 0.0, "ry": 0.0, "opacity": 1.0}
 
@@ -994,7 +1020,9 @@ class _PartClip(Clip):
         self._timing = None
 
     def set_group(self, mobs):
-        grp = (VGroup if all(isinstance(m, VMobject) for m in mobs) else Group)(*mobs)
+        # one mobject: animate it as itself (a wrapper VGroup would change lagged animations' pacing,
+        # e.g. Write staggers over family members, so it would write slower than the clip on its own)
+        grp = mobs[0] if len(mobs) == 1 else (VGroup if all(isinstance(m, VMobject) for m in mobs) else Group)(*mobs)
         self._base = grp
         self._display = grp.copy()
         self._display_key = None
@@ -1077,6 +1105,8 @@ def parts_tree(mob, names: dict | None = None, max_depth: int = 4, max_children:
             for j, c in enumerate(m.submobjects[:max_children]):
                 if budget[0] <= 0:
                     break
+                if isinstance(c, VectorizedPoint):
+                    continue  # layout padding (keep_origin, group_of): nothing to time
                 kids.append(walk(c, f"{path}.{j}" if path else str(j), depth + 1, m, j))
             node["children"] = kids
             if len(kids) < len(m.submobjects):

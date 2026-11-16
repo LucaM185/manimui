@@ -1,5 +1,5 @@
 // Self-update status, mirrored from the main process (electron/main.cjs "updates"). A background
-// check that finds a new version shows one toast per version and a dot on the Settings tab.
+// check that finds a new version shows one toast per version and a dot on the top-bar Settings icon.
 import { create } from 'zustand';
 import { useStore } from './store';
 import type { UpdateStatus } from './types';
@@ -15,7 +15,7 @@ function apply(s: UpdateStatus) {
     toasted = s.version;
     useStore.getState().toast(`MathStudio ${s.version} is available`, 'info', {
       label: 'View',
-      run: () => useStore.setState({ rightTab: 'settings' }),
+      run: () => useStore.setState({ settingsOpen: true }),
     });
   }
 }
@@ -28,7 +28,7 @@ export function initUpdates() {
   api.get().then(apply).catch(() => {});
 }
 
-/** worth a dot on the Settings tab */
+/** worth a dot on the top-bar Settings icon */
 export const hasUpdate = (s: UpdateStatus | null) => !!s && (s.state === 'available' || s.state === 'ready' || s.state === 'downloading');
 
 export function formatBytes(n?: number) {

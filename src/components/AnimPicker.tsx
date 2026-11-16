@@ -84,11 +84,14 @@ export function AnimPopover({
   clipId,
   effId,
   part,
+  onRemove,
 }: {
   kind: 'enter' | 'exit' | 'effect';
   value: string;
   options: AnimOption[];
   anchor: AnchorRect;
+  /** shows a "Remove" button (effects: there is no "none" tile) */
+  onRemove?: () => void;
   /** preview on one part of a group clip (path, see Clip.parts) */
   part?: string;
   /** when set, the candidate animation plays on this clip in the main viewer instead of a GIF box */
@@ -178,7 +181,12 @@ export function AnimPopover({
       style={{ left: pos?.x ?? 0, top: pos?.y ?? 0, visibility: pos ? 'visible' : 'hidden' }}
       data-testid={testid ? `${testid}-pop` : undefined}
     >
-      {title && <div className="anim-pop-title">{title}</div>}
+      {(title || onRemove) && (
+        <div className="anim-pop-title">
+          <span>{title}</span>
+          {onRemove && <button className="btn small ghost danger" data-testid={testid ? `${testid}-remove` : undefined} onClick={onRemove}>Remove</button>}
+        </div>
+      )}
       {live ? (
         <div className="anim-pop-hint">Hover to preview in the viewer</div>
       ) : (

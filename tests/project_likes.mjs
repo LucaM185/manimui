@@ -32,7 +32,7 @@ const errors = [];
 let { app, win } = await launch();
 const cards = () => win.$$eval('[data-testid=project-card]', (els) => els.map((e) => ({ name: e.querySelector('.proj-name')?.textContent || e.querySelector('input')?.value, liked: !!e.dataset.liked, current: !!e.dataset.current })));
 const order = async () => (await cards()).filter((c) => !c.current).map((c) => c.name + (c.liked ? '♥' : '')).join(',');
-const openPopup = async () => { await win.click('[data-testid=projects-btn]'); await win.waitForSelector('[data-testid=project-card][data-path]'); };
+const openPopup = async () => { await win.click('[data-testid=tb-projects]'); await win.waitForSelector('[data-testid=project-card][data-path]'); };
 const cardSel = (n) => `[data-testid=project-card][data-path$="/${n}.mstudio"]`;
 const favs = () => { try { return JSON.parse(fs.readFileSync(FAVS, 'utf8')).map((p) => path.basename(p, '.mstudio')); } catch (e) { return []; } };
 
