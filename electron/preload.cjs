@@ -60,10 +60,17 @@ contextBridge.exposeInMainWorld('studio', {
     read: (hash) => ipcRenderer.invoke('checkpoint:read', hash),
     dir: () => ipcRenderer.invoke('checkpoint:dir'),
   },
+  chats: {
+    list: () => ipcRenderer.invoke('chats:list'),
+    save: (chat) => ipcRenderer.invoke('chats:save', chat),
+    read: (id) => ipcRenderer.invoke('chats:read', id),
+    delete: (id) => ipcRenderer.invoke('chats:delete', id),
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (patch) => ipcRenderer.invoke('settings:set', patch),
     testKey: (key) => ipcRenderer.invoke('settings:testKey', key),
+    models: (draft) => ipcRenderer.invoke('settings:models', draft),
   },
   updates: {
     get: () => ipcRenderer.invoke('update:get'),

@@ -363,7 +363,7 @@ class Renderer:
         if not isinstance(mob, rt.Mobject):
             raise TypeError(f"factory must return a Mobject, got {type(mob).__name__}")
         mob.move_to(rt.ORIGIN)
-        return rt.parts_tree(mob, names)
+        return rt.parts_tree(mob, names, hide_invisible=not codegen.is_dynamic(c))
 
     STRIP_H = 72
 

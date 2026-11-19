@@ -22,7 +22,12 @@ function installMock({ ipcMain }) {
   ipcMain.handle('ai:status', async () => ({ configured: true, model: 'mock/scripted' }));
   ipcMain.handle('ai:chat', async (_e, { body }) => {
     const msgs = body.messages;
-    for (const m of msgs) if (m.role === 'tool' && !global.__toolResults.includes(m.content)) global.__toolResults.push(m.content);
+    for (const m of msgs) {
+      if (m.role !== 'tool') continue;
+      // cached tool messages carry [{ type: 'text', text, cache_control }]
+      const text = Array.isArray(m.content) ? m.content.map((x) => x.text || '').join('') : m.content;
+      if (!global.__toolResults.includes(text)) global.__toolResults.push(text);
+    }
     global.__lastSystem = JSON.stringify(msgs[0]?.content);
     global.__tools = (body.tools || []).map((t) => t.function.name);
     const last = msgs[msgs.length - 1];
@@ -245,7 +250,7 @@ await win.waitForFunction(() => window.__ms.agent.useAgent.getState().running, n
 await win.waitForFunction(() => !window.__ms.agent.useAgent.getState().running, null, { timeout: 60000 });
 const sys = await app.evaluate(() => global.__lastSystem);
 const tools = await app.evaluate(() => global.__tools);
-check(/Build scenes from SEPARATE, movable elements/.test(sys) && /# Globals/.test(sys), 'system prompt asks for separate elements and globals');
+check(/Build scenes from tidy BLOCKS/.test(sys) && /ONE TRACK PER BLOCK/.test(sys) && /# Globals/.test(sys), 'system prompt asks for tidy blocks, one track each, and globals');
 check(tools.includes('set_globals'), 'set_globals tool offered to the model');
 const results = await app.evaluate(() => global.__toolResults);
 const r0 = JSON.parse(results[0] || '{}');

@@ -101,7 +101,8 @@ const frameW = async (win, { min = 0, max = Infinity } = {}) => {
   await win.setViewportSize({ width: 1280, height: 800 });
   await win.waitForTimeout(400);
   const dlg = await win.$eval('[data-testid=settings-panel]', (el) => { const r = el.getBoundingClientRect(); return { h: r.height, sw: el.scrollWidth, cw: el.clientWidth }; });
-  check(dlg.h < 420 && dlg.sw <= dlg.cw + 1, `compact popup, no overflow (${JSON.stringify(dlg)})`);
+  // (taller since the AI provider/model rows: it must fit the window and scroll inside, not overflow sideways)
+  check(dlg.h <= 800 - 80 + 1 && dlg.sw <= dlg.cw + 1, `popup fits the window, no overflow (${JSON.stringify(dlg)})`);
   await shot(win, 'settings_narrow.png');
   await win.keyboard.press('Escape');
   await win.waitForTimeout(200);

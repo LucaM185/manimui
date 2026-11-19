@@ -5,7 +5,7 @@
 // start another agent there) while it keeps working — each agent only ever edits its own project.
 import { create } from 'zustand';
 import { sessionDroppers, sessionKeepers, useStore } from '../store';
-import type { AiMessage, Project } from '../types';
+import type { AiMessage, AiStatus, ChatMeta, Project } from '../types';
 import { buildSystemPrompt } from './prompt';
 import { TOOL_DEFS, editorState, runTool } from './tools';
 import { normalizeProject } from '../ops';
@@ -14,6 +14,11 @@ import { flushSave } from '../autosave';
 import { refreshProjectThumb } from '../actions';
 
 const MAX_STEPS = 40;
+const MAX_OUT = 120000;
+/** Replies cut off by the length limit that are retried automatically (per turn) before giving up. */
+const MAX_CUTOFFS = 2;
+const CUTOFF_NUDGE = '[Your last reply was cut off by the output length limit before you finished, so nothing was applied. Do not plan the whole build up front: make the next tool call now and build in several smaller calls.]';
+const validJson = (s: string) => { try { JSON.parse(s || '{}'); return true; } catch { return false; } };
 const S = () => useStore.getState();
 
 export type ChatItem =
@@ -43,14 +48,17 @@ export interface ChatState {
   draft: string;
   /** the agent finished while the user was looking at another project */
   unseen: null | 'done' | 'error';
+  /** id of this chat in the saved history (set on the first save) */
+  chatId: string | null;
+  created: number;
 }
 
-const EMPTY: ChatState = { items: [], history: [], running: false, phase: 'idle', cost: 0, draft: '', unseen: null };
+const EMPTY: ChatState = { items: [], history: [], running: false, phase: 'idle', cost: 0, draft: '', unseen: null, chatId: null, created: 0 };
 
 interface AgentsState {
   /** chats by session id */
   chats: Record<string, ChatState>;
-  status: { configured: boolean; model: string } | null;
+  status: AiStatus | null;
 }
 
 export const useAgents = create<AgentsState>(() => ({ chats: {}, status: null }));
@@ -271,13 +279,89 @@ export function stop(sid = activeSid()) {
 
 export function newChat(sid = activeSid()) {
   if (chatOf(sid).running) return;
-  setChat(sid, { items: [], history: [], cost: 0, phase: 'idle', unseen: null });
+  setChat(sid, { items: [], history: [], cost: 0, phase: 'idle', unseen: null, chatId: null, created: 0 });
+}
+
+// ------------------------------------------------------------------ saved chats (history)
+// Each chat is saved after every turn, so the history (clock button) can resume any of them.
+// Project snapshots stay out of the file: going back uses the message's git checkpoint.
+
+/** Save the chat of a project as it is now (an emptied chat is removed from the history). */
+export async function saveChat(sid = activeSid()) {
+  const api = window.studio?.chats;
+  if (!api) return;
+  const c = chatOf(sid);
+  const users = c.items.filter((it) => it.kind === 'user') as Extract<ChatItem, { kind: 'user' }>[];
+  if (!users.length) {
+    if (c.chatId) {
+      setChat(sid, { chatId: null, created: 0 });
+      await api.delete(c.chatId);
+    }
+    return;
+  }
+  const chatId = c.chatId || 'c' + Date.now().toString(36) + iid();
+  const created = c.created || Date.now();
+  if (!c.chatId) setChat(sid, { chatId, created });
+  const d = runFor(sid).doc;
+  const { filePath, project } = d.get();
+  const items = c.items.map((it) => {
+    if (it.kind === 'user') { const { snapshot: _s, ...rest } = it; return rest; }
+    if (it.kind === 'done') { const { before: _b, after: _a, ...rest } = it; return rest; }
+    if (it.kind === 'assistant') return { ...it, streaming: false };
+    return it;
+  });
+  await api.save({
+    id: chatId, path: filePath, sid, project: project.settings.name, title: users[0].text.split('\n')[0].trim(),
+    created, messages: users.length, cost: c.cost, items, history: c.history,
+  });
+}
+
+/** Saved chats of a project (newest first). */
+export async function listChats(sid = activeSid()): Promise<ChatMeta[]> {
+  const api = window.studio?.chats;
+  if (!api) return [];
+  const all = await api.list();
+  const { filePath } = runFor(sid).doc.get();
+  return all.filter((c) => (filePath && c.path ? c.path === filePath : c.sid === sid));
+}
+
+/** Resume a saved chat in a project, replacing the chat on screen (which is already saved). */
+export async function resumeChat(chatId: string, sid = activeSid()): Promise<boolean> {
+  if (chatOf(sid).running || !window.studio?.chats) return false;
+  if (chatOf(sid).chatId === chatId) return true;
+  const r = await window.studio.chats.read(chatId);
+  if (!r.chat) {
+    S().toast(`This chat could not be opened${r.error ? `: ${r.error}` : ''}.`, 'error');
+    return false;
+  }
+  if (chatOf(sid).running) return false;
+  const ch = r.chat;
+  setChat(sid, {
+    items: Array.isArray(ch.items) ? ch.items : [],
+    history: Array.isArray(ch.history) ? ch.history : [],
+    cost: +ch.cost || 0,
+    chatId: ch.id,
+    created: +ch.created || Date.now(),
+    phase: 'idle',
+    unseen: null,
+  });
+  window.dispatchEvent(new Event('agent:focus'));
+  return true;
+}
+
+export async function deleteChat(chatId: string, sid = activeSid()) {
+  if (chatOf(sid).chatId === chatId) {
+    if (chatOf(sid).running) return;
+    newChat(sid);
+  }
+  await window.studio?.chats?.delete(chatId);
 }
 
 async function loop(run: Run) {
   listen();
   const { sid } = run;
   run.aborted = false;
+  let cutoffs = 0;
   setChat(sid, { running: true, phase: 'thinking' });
   try {
     for (; run.turnSteps < MAX_STEPS; run.turnSteps++) {
@@ -292,12 +376,17 @@ async function loop(run: Run) {
       const res = await window.studio.ai.chat(reqId, {
         messages: requestMessages(sid),
         tools: TOOL_DEFS,
-        max_tokens: 16000,
+        // streamed, so no HTTP timeout: leave room for long thinking plus a big build in one reply
+        max_tokens: MAX_OUT,
         reasoning: { effort: 'medium' },
       });
       reqOwner.delete(reqId);
       run.currentReq = null;
-      if (run.streamText) patchItem(sid, run.streamText, { streaming: false });
+      // the reply can overtake the last streamed chunks (a fast server sends them in one packet,
+      // and those late events are dropped as stale): the returned message is the full text
+      const full = res.message?.content ?? res.partial?.content;
+      if (run.streamText) patchItem(sid, run.streamText, { streaming: false, ...(typeof full === 'string' && full ? { text: full } : {}) });
+      else if (typeof full === 'string' && full.trim()) pushItem(sid, { id: iid(), kind: 'assistant', text: full });
       if (res.usage?.cost) {
         run.turnCost += res.usage.cost;
         setChat(sid, { cost: chatOf(sid).cost + res.usage.cost });
@@ -315,17 +404,33 @@ async function loop(run: Run) {
       }
       if (res.error || !res.message) {
         dropPending();
-        if (res.code === 'nokey') useAgents.setState({ status: { configured: false, model: useAgents.getState().status?.model || '' } });
+        if (res.code === 'nokey') useAgents.setState({ status: { ...(useAgents.getState().status || { model: '' }), configured: false } });
         pushItem(sid, { id: iid(), kind: 'error', text: res.error || 'No response from the model.', retry: res.code !== 'nokey' });
         break;
       }
       const msg = res.message;
-      const calls = msg.tool_calls || [];
-      setChat(sid, { history: [...chatOf(sid).history, { ...msg, content: msg.content || '' }] });
-      if (!calls.length) {
-        if (res.finish === 'length') pushItem(sid, { id: iid(), kind: 'error', text: 'The reply hit the length limit.', retry: false });
+      const cut = res.finish === 'length';
+      // a reply cut off mid tool call leaves that call's JSON unfinished: it never runs, and goes
+      // back to the model as `{}` (the API rejects an unparseable input) with a note to resend it
+      const truncated = new Set<string>();
+      const calls = (msg.tool_calls || []).map((c) => {
+        if (!cut || validJson(c.function.arguments)) return c;
+        truncated.add(c.id);
+        return { ...c, function: { ...c.function, arguments: '{}' } };
+      });
+      if (cut && !calls.length) {
+        // nothing usable came out (usually all of it went to thinking): an empty assistant message
+        // can't be sent back, nor can an unsigned, half-written thinking block
+        dropPending();
+        const { reasoning_details: _r, ...rest } = msg as any;
+        // the nudge goes in either way, so Retry also starts from a user message (no assistant prefill)
+        setChat(sid, { history: [...chatOf(sid).history, { ...rest, content: msg.content || '(cut off)' }, { role: 'user', content: CUTOFF_NUDGE }] });
+        if (cutoffs++ < MAX_CUTOFFS && !run.aborted) continue;
+        pushItem(sid, { id: iid(), kind: 'error', text: 'The model kept running out of room before finishing. Try asking for a smaller piece at a time.', retry: true });
         break;
       }
+      setChat(sid, { history: [...chatOf(sid).history, { ...msg, content: msg.content || '', ...(calls.length ? { tool_calls: calls } : {}) }] });
+      if (!calls.length) break;
 
       // run the tools in order
       setChat(sid, { phase: 'tools' });
@@ -338,7 +443,9 @@ async function loop(run: Run) {
           itemId = iid();
           pushItem(sid, { id: itemId, kind: 'tool', name: call.function.name, status: 'running', summary: call.function.name });
         } else patchItem(sid, itemId, { status: 'running', name: call.function.name } as any);
-        const r = await runTool(run.doc, call.function.name, call.function.arguments);
+        const r = truncated.has(call.id)
+          ? { ok: false, args: {}, text: 'This call was cut off by the output length limit before its arguments were complete, so it did not run. Send it again, split into smaller calls if it is large.', summary: `${call.function.name}: cut off, retrying`, images: undefined }
+          : await runTool(run.doc, call.function.name, call.function.arguments);
         patchItem(sid, itemId, { status: r.ok ? 'ok' : 'error', summary: r.summary, args: r.args, result: r.text, images: r.images } as any);
         toolMsgs.push({ role: 'tool', tool_call_id: call.id, content: r.text });
         if (r.images) images.push(...r.images);
@@ -385,13 +492,15 @@ function finishTurn(run: Run) {
     pushItem(run.sid, { id: iid(), kind: 'done', changed, before: changed ? before! : undefined, after: changed ? after : undefined, cost: run.turnCost, steps: run.turnSteps });
   }
   if (!d.active()) notifyBackground(run, failed, changed);
-  // keep the project's thumbnail (strip, projects browser) in step with what the agent made
+  // keep the project's thumbnail (strip, projects browser) in step with what the agent made;
+  // the chat is saved once the project has its file, so the history finds it under that file
   if (changed) {
     flushSave(false, run.sid).then(() => {
+      saveChat(run.sid);
       const { filePath, project } = d.get();
       if (filePath && project.clips.length) refreshProjectThumb(filePath, project);
     });
-  }
+  } else saveChat(run.sid);
 }
 
 /** The agent of a project the user isn't looking at finished: badge it and offer to jump there. */
@@ -461,6 +570,7 @@ export async function rewindTo(itemId: string, sid = activeSid()): Promise<boole
   const items = chatOf(sid).items;
   const idx = items.findIndex((x) => x.id === itemId);
   setChat(sid, { items: items.slice(0, idx), history: chatOf(sid).history.slice(0, it.historyLen), draft: it.text, phase: 'idle' });
+  saveChat(sid);
   S().toast(cur !== target ? `Restored the project to before this message${source === 'memory' ? '' : ` (${it.checkpoint!.slice(0, 7)})`} · ⌘Z undoes` : 'Rewound the chat (the project was unchanged)', 'success');
   window.dispatchEvent(new Event('agent:focus'));
   return true;

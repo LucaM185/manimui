@@ -27,7 +27,12 @@ await app.evaluate(({ ipcMain }, code) => {
   ipcMain.handle('ai:chat', async (_e, { body }) => {
     const msgs = body.messages;
     global.__lastSystem = JSON.stringify(msgs[0]?.content);
-    for (const m of msgs) if (m.role === 'tool' && !global.__toolResults.includes(m.content)) global.__toolResults.push(m.content);
+    for (const m of msgs) {
+      if (m.role !== 'tool') continue;
+      // cached tool messages carry [{ type: 'text', text, cache_control }]
+      const text = Array.isArray(m.content) ? m.content.map((x) => x.text || '').join('') : m.content;
+      if (!global.__toolResults.includes(text)) global.__toolResults.push(text);
+    }
     if (!msgs.some((m) => m.role === 'tool')) {
       const args = { clips: [{ item: 'custom', name: 'Padded grid', code, start: 0, duration: 4, x: 0, y: 0 }] };
       return { message: { role: 'assistant', content: '', tool_calls: [{ id: 'call_add', type: 'function', function: { name: 'add_clips', arguments: JSON.stringify(args) } }] }, finish: 'tool_calls', usage: { cost: 0 } };

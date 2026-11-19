@@ -3,9 +3,13 @@
 // 1. from source: no updater, "git pull" hint
 // 2. notify mode (.deb / Mac): up to date → new version with notes + "Open download page" → server
 //    error → readable message; "Last checked"; auto-check toggle persists
-// 3. background check: toast "MathStudio x is available" + dot on the Settings tab
-// 4. install mode (AppImage, faked with $APPIMAGE): corrupted download refused (sha512), then a real
-//    download with progress → "Restart to update" → the file is replaced and the new one launched
+// 3. background check, notify mode: toast "MathStudio x is available · Download" (opens the
+//    releases page) + dot on the Settings tab
+// 4. install mode (AppImage, faked with $APPIMAGE): "Check" downloads right away; a corrupted
+//    download is refused (sha512), then a real one with progress → "Restart to update" → the file is
+//    replaced and the new one launched
+// 5. install mode in the background: a failed download falls back quietly to "Download"; a good one
+//    ends in a single toast "MathStudio x is ready · Restart" → the file is replaced
 import { _electron as electron } from 'playwright';
 import crypto from 'crypto'; import fs from 'fs'; import http from 'http'; import os from 'os'; import path from 'path';
 import { fileURLToPath } from 'url';
@@ -133,18 +137,21 @@ try {
   }
 
   // ---------------------------------------------------------------- 3. background check
-  console.log('3. background check at launch');
+  console.log('3. background check at launch (notify mode)');
   {
     release = { version: '9.2.0', notes: 'Background' };
     const { app, win } = await launch({ MATHSTUDIO_UPDATE_URL: URL_, MATHSTUDIO_UPDATE_DELAY_MS: '1500' });
+    await stubOpenExternal(app);
     await win.waitForFunction(() => /MathStudio 9\.2\.0 is available/.test(document.body.innerText), null, { timeout: 30000 });
     check(true, 'toast "MathStudio 9.2.0 is available"');
     check(await win.isVisible('[data-testid=update-dot]'), 'dot on the Settings icon');
-    await win.click('.toast >> text=View');
-    await win.waitForSelector('[data-testid=settings-updates]');
-    check(await S(win, () => window.__ms.store.getState().settingsOpen), 'toast "View" opens Settings');
+    await win.click('.toast >> text=Download');
+    const opened = await waitOpened(app);
+    check(/\/releases\/latest$/.test(opened || ''), `toast "Download" opens the releases page (${opened})`);
+    await openSettings(win);
     check(!(await win.isVisible('[data-testid=update-dot]')), 'dot hidden while Settings is open');
     check((await stateOf(win)) === 'available', 'panel already shows the update');
+    check(await win.isVisible('[data-testid=update-open-page]'), 'panel offers the download page too');
     await app.close();
   }
 
@@ -160,17 +167,14 @@ try {
 
     release = { version: '9.3.0', notes: 'Corrupt', sha: sha512(Buffer.from('something else')) };
     await win.click('[data-testid=update-check]');
-    await waitState(win, 'available');
-    check(await win.isVisible('[data-testid=update-download]'), 'install mode → "Download update"');
-    await win.click('[data-testid=update-download]');
+    await waitState(win, 'downloading');
+    check(true, 'install mode → "Check" starts the download by itself');
     await waitState(win, 'error', 60000);
     check(/checksum|corrupt/i.test(await win.textContent('[data-testid=update-status]')), 'corrupted download refused (sha512 mismatch)');
     check(fs.readFileSync(OLD, 'utf8').includes('echo old'), 'installed file untouched');
 
     release = { version: '9.3.0', notes: 'Good one' };
     await win.click('[data-testid=update-check]');
-    await waitState(win, 'available');
-    await win.click('[data-testid=update-download]');
     await win.waitForSelector('[data-testid=update-progress]', { timeout: 20000 });
     check(true, 'progress bar while downloading');
     const moved = await win.waitForFunction(() => /Downloading… [1-9]\d*%/.test(document.querySelector('[data-testid=update-status]')?.textContent || ''), null, { timeout: 20000 }).then(() => true, () => false);
@@ -190,11 +194,81 @@ try {
     check(fs.existsSync(MARK) && /launched true/.test(fs.readFileSync(MARK, 'utf8')), 'new AppImage launched (APPIMAGE_SILENT_INSTALL=true)');
     if (!gone) await app.close().catch(() => {});
   }
+
+  // ---------------------------------------------------------------- 5. install mode, background
+  console.log('5. install mode in the background');
+  fs.writeFileSync(SETTINGS, JSON.stringify({}));
+  fs.writeFileSync(OLD, '#!/bin/sh\necho old\n', { mode: 0o755 });
+  fs.rmSync(MARK, { force: true });
+  fs.rmSync(CACHE_DIR, { recursive: true, force: true });
+  const bgEnv = { MATHSTUDIO_UPDATE_URL: URL_, MATHSTUDIO_UPDATE_MODE: 'install', APPIMAGE: OLD, MATHSTUDIO_UPDATE_NO_DIFF: '1', MATHSTUDIO_UPDATE_DELAY_MS: '1500' };
+  {
+    // a background download that fails: no error, no toast, Settings offers "Download"
+    release = { version: '9.4.0', notes: 'Corrupt', sha: sha512(Buffer.from('something else')) };
+    const { app, win } = await launch(bgEnv);
+    const seen = await trackStates(win, (st) => st === 'available', (all) => all.includes('downloading'));
+    check(seen.at(-1) === 'available' && seen.includes('downloading'), `background download failed → back to "available" (${seen.join(' → ')})`);
+    check(!(await win.isVisible('.toast')), 'no toast for a failed background download');
+    check(await win.isVisible('[data-testid=update-dot]'), 'dot on the Settings icon');
+    await openSettings(win);
+    check(await win.isVisible('[data-testid=update-download]'), 'Settings offers "Download"');
+    check((await stateOf(win)) === 'available', 'no error shown');
+    release = { version: '9.4.0', notes: 'Good one' };
+    await win.click('[data-testid=update-download]');
+    await waitState(win, 'ready', 60000);
+    check(true, '"Download" retries and gets it');
+    check(fs.readFileSync(OLD, 'utf8').includes('echo old'), 'nothing installed until restart');
+    await app.close();
+  }
+  fs.rmSync(CACHE_DIR, { recursive: true, force: true });
+  {
+    release = { version: '9.5.0', notes: 'Background good' };
+    const { app, win } = await launch(bgEnv);
+    const seen = await trackStates(win, (st) => st === 'ready');
+    check(seen.includes('downloading'), `downloaded in the background (${seen.join(' → ')})`);
+    await win.waitForFunction(() => /MathStudio 9\.5\.0 is ready/.test(document.querySelector('.toasts')?.textContent || ''), null, { timeout: 5000 });
+    check(true, 'toast "MathStudio 9.5.0 is ready"');
+    check(!/is available/.test(await win.textContent('.toasts')), 'no separate "available" toast');
+    check((await win.locator('.toasts .toast').count()) === 1, 'exactly one toast');
+    check(await win.isVisible('[data-testid=update-dot]'), 'dot on the Settings icon');
+    await win.locator('.toasts').screenshot({ path: path.join(OUT, 'updates_ready_toast.png') });
+    const closed = new Promise((r) => app.on('close', r));
+    await win.click('.toast >> text=Restart');
+    const gone = await Promise.race([closed.then(() => true), new Promise((r) => setTimeout(() => r(false), 20000))]);
+    check(gone, 'toast "Restart" quits the app');
+    check(sha512(fs.readFileSync(OLD)) === sha512(NEW_APP), 'AppImage replaced by the new version');
+    await new Promise((r) => setTimeout(r, 1500));
+    check(fs.existsSync(MARK), 'new AppImage launched');
+    if (!gone) await app.close().catch(() => {});
+  }
 } finally {
   server.close();
   fs.rmSync(CACHE_DIR, { recursive: true, force: true });
 }
 
 function S(win, f) { return win.evaluate(f); }
+/** poll the updater state from here until done(state) (and all(states) when given); returns the
+ *  distinct states seen in order */
+async function trackStates(win, done, all = () => true, timeout = 60000) {
+  const seen = [];
+  for (const end = Date.now() + timeout; Date.now() < end;) {
+    const st = (await win.evaluate(() => window.studio.updates.get())).state;
+    if (seen.at(-1) !== st) seen.push(st);
+    if (done(st) && all(seen)) break;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return seen;
+}
+async function stubOpenExternal(app) {
+  await app.evaluate(({ shell }) => { global.__opened = null; shell.openExternal = async (u) => { global.__opened = u; }; });
+}
+async function waitOpened(app) {
+  for (let i = 0; i < 50; i++) {
+    const u = await app.evaluate(() => global.__opened);
+    if (u) return u;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return null;
+}
 console.log(fails.length ? `\nUPDATES: ${fails.length} FAILED\n - ${fails.join('\n - ')}` : '\nUPDATES: ALL PASS');
 process.exit(fails.length ? 1 : 0);

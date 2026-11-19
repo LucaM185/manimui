@@ -357,9 +357,50 @@ export interface AppSettings {
   quality: RenderQuality;
   /** the OpenRouter key in use: typed in Settings, from the environment, or from a .env file */
   key: { set: boolean; source: 'settings' | 'environment' | 'env-file' | null; masked: string };
+  /** the model the agent uses now (of the active provider) */
   model: string;
+  ai: AiSettings;
   file: string;
 }
+
+export type AiProvider = 'openrouter' | 'custom';
+
+export interface AiStatus { configured: boolean; model: string; provider?: AiProvider; label?: string }
+export type ThinkingEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high';
+
+/** Model options, per provider. null = the default (OpenRouter: the agent's own cap; custom: the server's). */
+export interface AiModelOptions {
+  model: string;
+  reasoning: ThinkingEffort;
+  maxTokens: number | null;
+  temperature: number | null;
+}
+
+export interface AiSettings {
+  provider: AiProvider;
+  /** display name of the active provider */
+  label: string;
+  configured: boolean;
+  /** OpenRouter model used when none is set */
+  defaultModel: string;
+  openrouter: AiModelOptions;
+  /** any OpenAI-compatible chat-completions API (OpenAI, Ollama, LM Studio, Groq, …) */
+  custom: AiModelOptions & {
+    name: string;
+    baseUrl: string;
+    /** send rendered previews as images (off for text-only models) */
+    vision: boolean;
+    /** keep Anthropic-style cache_control hints (and array content) in the request */
+    cache: boolean;
+    key: { set: boolean; masked: string };
+  };
+}
+
+export type AiSettingsPatch = {
+  provider?: AiProvider;
+  openrouter?: Partial<Omit<AiModelOptions, 'maxTokens' | 'temperature'> & { maxTokens: number | string | null; temperature: number | string | null }>;
+  custom?: Partial<Omit<AiModelOptions, 'maxTokens' | 'temperature'> & { maxTokens: number | string | null; temperature: number | string | null; name: string; baseUrl: string; apiKey: string | null; vision: boolean; cache: boolean }>;
+};
 
 /** Self-update status from the main process (electron/main.cjs "updates"). */
 export interface UpdateStatus {
@@ -438,9 +479,17 @@ declare global {
         read: (hash: string) => Promise<{ data?: Project; error?: string }>;
         dir: () => Promise<string>;
       };
+      chats?: {
+        list: () => Promise<ChatMeta[]>;
+        save: (chat: any) => Promise<{ ok?: boolean; meta?: ChatMeta; error?: string }>;
+        read: (id: string) => Promise<{ chat?: any; error?: string }>;
+        delete: (id: string) => Promise<{ ok?: boolean; error?: string }>;
+      };
       settings?: {
         get: () => Promise<AppSettings>;
-        set: (patch: { quality?: RenderQuality; openrouterKey?: string | null }) => Promise<AppSettings & { error?: string }>;
+        set: (patch: { quality?: RenderQuality; openrouterKey?: string | null; ai?: AiSettingsPatch }) => Promise<AppSettings & { error?: string }>;
+        /** models the provider offers (GET <base>/models); doubles as the custom provider's connection test */
+        models: (draft?: { provider?: AiProvider; baseUrl?: string; apiKey?: string }) => Promise<{ ok: boolean; models?: string[]; error?: string }>;
         testKey: (key?: string) => Promise<{ ok: boolean; error?: string; label?: string; usage?: number; limit?: number | null; freeTier?: boolean }>;
       };
       updates?: {
@@ -454,7 +503,7 @@ declare global {
       };
       openExternal?: (url: string) => Promise<void>;
       ai: {
-        status: () => Promise<{ configured: boolean; model: string }>;
+        status: () => Promise<AiStatus>;
         chat: (reqId: string, body: any) => Promise<AiChatResult>;
         abort: (reqId: string) => Promise<boolean>;
         onEvent: (cb: (ev: AiStreamEvent) => void) => () => void;
@@ -462,4 +511,21 @@ declare global {
       platform: string;
     };
   }
+}
+
+/** One saved agent chat, as the history list shows it (electron main: chats:*). */
+export interface ChatMeta {
+  id: string;
+  /** project file the chat belongs to */
+  path: string | null;
+  /** session of a project that had no file yet when the chat was saved */
+  sid: string | null;
+  project: string;
+  /** first message */
+  title: string;
+  created: number;
+  updated: number;
+  /** user messages */
+  messages: number;
+  cost: number;
 }

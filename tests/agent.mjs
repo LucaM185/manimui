@@ -72,6 +72,25 @@ for (const prompt of prompts) {
     else if (it.kind === 'user') console.log(`   👤 ${it.text}`);
   }
   console.log(`   clips: ${r.clips.map((c) => `${c.name}[${c.item}] ${c.start}-${(c.start + c.duration).toFixed(2)}`).join(' | ')}`);
+  // how the timeline reads: tracks front to back, each clip with its named part rows
+  const layout = await win.evaluate(async () => {
+    const s = window.__ms.store.getState();
+    const out = [];
+    for (const t of s.project.tracks) {
+      const cs = s.project.clips.filter((c) => c.track === t.id).sort((a, b) => a.start - b.start);
+      const rows = [];
+      for (const c of cs) {
+        const tree = c.code ? await window.__ms.parts.loadClipParts(c) : null;
+        const kids = (tree?.children || []).map((k) => k.label || `(${k.type})`);
+        rows.push(`${c.name} ${c.start}s${kids.length > 1 ? ` [${kids.join(', ')}]` : ''}`);
+      }
+      out.push({ track: t.name, rows });
+    }
+    return out;
+  });
+  console.log('   timeline (front → back):');
+  for (const l of layout) console.log(`     ▸ ${l.track}: ${l.rows.join(' | ') || '(empty)'}`);
+  fs.writeFileSync(path.join(OUT, `${i}-layout.json`), JSON.stringify(layout, null, 2));
   console.log(`   ${secs}s, chat cost $${r.cost.toFixed(4)}`);
   check(r.items.some((it) => it.kind === 'assistant' && it.text?.trim()), 'agent replied');
   check(!r.items.some((it) => it.kind === 'error' && it.text !== 'Stopped.'), 'no agent errors');

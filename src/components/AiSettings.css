@@ -1,0 +1,18 @@
+/* AI rows of the Settings popup (AiSettings.tsx) */
+.settings-dlg { width: 540px; max-height: calc(100vh - 80px); overflow-y: auto; }
+.set-grid { grid-template-columns: 70px 1fr; }
+.set-provider button, .set-effort button { font-size: 12px; }
+.set-cell select.ai-preset { flex: none; width: 108px; font-size: 12px; }
+.set-cell input.ai-url, .set-cell input.ai-model { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px; }
+.set-cell input.ai-num { width: 74px; flex: none; font-family: var(--mono); font-size: 12px; }
+.ai-nums { gap: 8px; }
+.ai-nums .faint { font-size: 11.5px; }
+.ai-checks { gap: 14px; }
+.ai-checks label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.set-test.warn { color: #f2c46d; }
+.set-cell .faint.small { font-size: 11px; }
+.ai-picker { position: relative; flex: 1; min-width: 0; display: flex; }
+.ai-picker-list { position: absolute; top: calc(100% + 3px); left: 0; right: 0; z-index: 20; max-height: 220px; overflow-y: auto; background: var(--raised); border: 1px solid var(--border2); border-radius: 7px; box-shadow: 0 8px 24px rgba(0,0,0,.45); padding: 3px; }
+.ai-picker-item { font-family: var(--mono); font-size: 11.5px; padding: 4px 7px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.ai-picker-item.hi { background: var(--accent2); color: white; }
+.ai-picker-item.cur:not(.hi) { color: var(--accent); }

@@ -1067,9 +1067,12 @@ class _PartClip(Clip):
         return self.parent.transform_at(u + self.offset)
 
 
-def parts_tree(mob, names: dict | None = None, max_depth: int = 4, max_children: int = 120):
+def parts_tree(mob, names: dict | None = None, max_depth: int = 4, max_children: int = 120, hide_invisible: bool = True):
     """The structure of a clip's mobject for the timeline: [{path, type, label, n, bbox, children}].
-    names maps id(mobject) -> the variable it was bound to in the clip's code."""
+    names maps id(mobject) -> the variable it was bound to in the clip's code. Leaves that draw
+    nothing (invisible alignment frames / references) get no row, like layout padding points;
+    paths keep the real child indices. hide_invisible=False for dynamic clips, whose elements may
+    just be transparent at the time the tree is built."""
     names = names or {}
     budget = [600]
 
@@ -1107,6 +1110,8 @@ def parts_tree(mob, names: dict | None = None, max_depth: int = 4, max_children:
                     break
                 if isinstance(c, VectorizedPoint):
                     continue  # layout padding (keep_origin, group_of): nothing to time
+                if hide_invisible and not c.submobjects and _is_invisible(c):
+                    continue  # an invisible frame used for alignment: nothing to see or time
                 kids.append(walk(c, f"{path}.{j}" if path else str(j), depth + 1, m, j))
             node["children"] = kids
             if len(kids) < len(m.submobjects):

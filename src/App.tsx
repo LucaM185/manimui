@@ -14,7 +14,7 @@ import CodePanel from './components/CodePanel';
 import ExportDialog from './components/ExportDialog';
 import ProjectsPanel from './components/ProjectsPanel';
 import Toasts from './components/Toasts';
-import AgentPanel from './components/AgentPanel';
+import AgentPanel, { AgentTabActions } from './components/AgentPanel';
 import SettingsDialog from './components/SettingsDialog';
 import { useAgent } from './agent/agent';
 import { initUpdates } from './updates';
@@ -400,6 +400,7 @@ export default function App() {
           <button className={rightTab === 'agent' ? 'on' : ''} onClick={() => useStore.setState({ rightTab: 'agent' })} data-testid="right-tab-agent" title="AI agent (⌘L)">
             <Sparkles size={13} /> AI Agent {agentRunning && rightTab !== 'agent' && <span className="busy-dot" />}
           </button>
+          {rightTab === 'agent' && <AgentTabActions />}
         </div>
         {rightTab === 'agent' ? <AgentPanel /> : <Inspector />}
       </div>

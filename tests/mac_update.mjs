@@ -78,11 +78,11 @@ try {
   const { app, win } = await launch();
   const st = await win.evaluate(() => window.studio.updates.get());
   check(st.mode === 'install', `release build can update itself (mode=${st.mode})`);
-  await win.click('[data-testid=update-check]');
-  await waitState(win, 'available', 60000);
-  check((await win.textContent('[data-testid=update-status]')).includes(`${NEXT_VERSION} is available`), `sees ${NEXT_VERSION} on the server (${el()})`);
+  // "Check" finds the new version and downloads it right away (no separate Download step)
   served = 0;
-  await win.click('[data-testid=update-download]');
+  await win.click('[data-testid=update-check]');
+  await win.waitForFunction(() => ['downloading', 'ready'].includes(document.querySelector('[data-testid=update-status]')?.getAttribute('data-state')), null, { timeout: 60000 });
+  check(true, `sees ${NEXT_VERSION} on the server and starts downloading (${el()})`);
   await waitState(win, 'ready', 900000).catch(async (e) => { console.log('   status:', await win.textContent('[data-testid=update-status]')); throw e; });
   const size = fs.statSync(path.join(NEXT, ZIP)).size;
   check(true, `downloaded (${el()}): ${(served / 1e6).toFixed(1)} MB from the server for a ${(size / 1e6).toFixed(0)} MB zip (${((100 * served) / size).toFixed(0)}%)`);

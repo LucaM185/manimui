@@ -4,11 +4,11 @@
 import { useStore } from '../store';
 import type { DocHandle } from '../sessions';
 import { fetchCode, renderFrame } from '../engine';
-import type { AnimSpec, Clip, ClipInfo, GlobalType, LibraryItem, PartSpec, Project, Track } from '../types';
-import { findNode, loadClipParts, PART_PATH, staggerParts } from '../parts';
+import type { AnimSpec, Clip, ClipInfo, GlobalType, LibraryItem, PartNode, PartSpec, Project, Track } from '../types';
+import { findNode, isGroupTree, loadClipParts, PART_PATH, staggerParts } from '../parts';
 import { GLOBAL_TYPES, coerceGlobalValue, deleteGlobal, evalLayout, globalUsage, isGlobalName, layoutProblems, linkable, linkedGlobal, newGlobal, renameGlobal, sanitizeGlobalName } from '../globals';
 import { describeView, fitView, presetAngles, VIEW_PRESETS, type V3 } from '../view3d';
-import { CAMERA_ID, DEFAULT_TRANSFORM, cameraAt, FRAME_H, FRAME_W, TKEYS, emptyTrackIds, freeTrackFor, insertTrack, joinMorphTrack, makeClip, removeEmptyTracks, resolveOverlap, round, uid } from '../ops';
+import { CAMERA_ID, DEFAULT_TRANSFORM, cameraAt, FRAME_H, FRAME_W, TKEYS, emptyTrackIds, insertTrack, joinMorphTrack, makeClip, removeEmptyTracks, resolveOverlap, round, trackIsFree, uid } from '../ops';
 
 const S = () => useStore.getState();
 
@@ -294,14 +294,41 @@ export function editorState(d: DocHandle) {
 // ------------------------------------------------------------------ applying clip specs
 const isNum = (v: any) => typeof v === 'number' && Number.isFinite(v);
 
-function resolveTrack(p: Project, ref: string, warnings: string[]): string {
+function resolveTrack(p: Project, ref: string, warnings: string[] | null): string {
   const byId = p.tracks.find((t) => t.id === ref);
   if (byId) return byId.id;
   const byName = p.tracks.find((t) => t.name.toLowerCase() === ref.trim().toLowerCase());
   if (byName) return byName.id;
-  const t = insertTrack(p, 0, ref.trim() || undefined);
-  warnings.push(`created track "${t.name}" (${t.id}) at the front`);
+  const t = newBlockTrack(p, ref.trim());
+  warnings?.push(`created track "${t.name}" (${t.id}) at the front`);
   return t.id;
+}
+
+const AUTO_TRACK = /^Track \d+$/;
+const uniqueTrackName = (p: Project, name: string) => {
+  const names = new Set(p.tracks.map((x) => x.name.toLowerCase()));
+  let n = name, i = 2;
+  while (names.has(n.toLowerCase())) n = `${name} ${i++}`;
+  return n;
+};
+
+/**
+ * A track for a new block, on top of every track in use, so blocks added one after another stack
+ * up like a staircase (first block at the bottom). An empty "Track N" left over from a new project
+ * is reused — the lowest one still above the used tracks — instead of piling up empty rows.
+ */
+function newBlockTrack(p: Project, name: string, index = 0): Track {
+  const used = new Set(p.clips.map((c) => c.track));
+  const firstUsed = p.tracks.findIndex((t) => used.has(t.id));
+  const limit = Math.min(firstUsed < 0 ? p.tracks.length : firstUsed, index > 0 ? index : Infinity);
+  for (let i = limit - 1; i >= 0 && index === 0; i--) {
+    const t = p.tracks[i];
+    if (!used.has(t.id) && !t.locked && AUTO_TRACK.test(t.name)) {
+      if (name) t.name = uniqueTrackName(p, name);
+      return t;
+    }
+  }
+  return insertTrack(p, index, name ? uniqueTrackName(p, name) : undefined);
 }
 
 function coerceParam(def: LibraryItem['params'][number], v: any): { ok: boolean; v?: any; why?: string } {
@@ -546,6 +573,40 @@ async function resolveParts(d: DocHandle, pending: PendingParts, warnings: strin
   }
 }
 
+/** A track this call created with a default "Track N" name takes the name of the block on it. */
+function nameNewTrack(p: Project, c: Clip, existing: Set<string>) {
+  const t = p.tracks.find((x) => x.id === c.track);
+  if (!t || existing.has(t.id) || !AUTO_TRACK.test(t.name)) return;
+  t.name = uniqueTrackName(p, c.name);
+}
+
+/**
+ * How a code clip's parts read on the timeline (its rows): "0 title (Text)", "1.2 x_label (Text)"…
+ * plus a warning when a VGroup's elements were built without a variable name (unlabelled rows).
+ */
+async function partsOutline(c: Clip, warnings: string[]): Promise<string[] | undefined> {
+  if (!c.code) return undefined;
+  const tree = await loadClipParts(c);
+  if (!tree || !isGroupTree(tree)) return undefined;
+  const out: string[] = [];
+  const unnamed: string[] = [];
+  const walk = (n: PartNode, depth: number) => {
+    for (const ch of n.children || []) {
+      if (out.length >= 24) return;
+      out.push(`${ch.path} ${ch.label ?? '(unnamed)'} (${ch.type})`);
+      if (!ch.label) unnamed.push(ch.path);
+      // a named sub-group shows its own rows; glyphs / axis internals don't need listing
+      if (depth < 1 && /^V?Group$/.test(ch.type) && ch.children?.length) walk(ch, depth + 1);
+    }
+  };
+  if (/^V?Group$/.test(tree.type)) walk(tree, 0);
+  else return undefined;
+  if (unnamed.length) {
+    warnings.push(`"${c.name}": part${unnamed.length > 1 ? 's' : ''} ${unnamed.slice(0, 8).join(', ')} ha${unnamed.length > 1 ? 've' : 's'} no name on the timeline — bind every element to its own local variable in the clip's code (title = Text(…); return VGroup(title, …)), not inline or inside a helper function`);
+  }
+  return out;
+}
+
 async function validate(d: DocHandle, ids: string[]) {
   const p = d.get().project;
   const errors: Record<string, string> = {};
@@ -620,6 +681,7 @@ const impls: Record<string, Impl> = {
     const warnings: string[] = [];
     const added: Clip[] = [];
     const pending: PendingParts = [];
+    const existing = new Set(d.get().project.tracks.map((t) => t.id));
     d.commit((p) => {
       for (const spec of clips) {
         const item = lib.items.find((i) => i.id === spec?.item);
@@ -633,11 +695,17 @@ const impls: Record<string, Impl> = {
         p.clips.push(c);
         const { track, name, ...rest } = spec; // makeClip already made the name unique
         applySpec(p, c, rest, warnings, pending);
-        c.track = typeof track === 'string' && track ? resolveTrack(p, track, warnings) : freeTrackFor(p, c.start, c.duration);
-        if (p.tracks.find((t) => t.id === c.track)?.locked) c.track = freeTrackFor(p, c.start, c.duration);
-        const before = c.track;
-        resolveOverlap(p, c.id);
-        if (c.track !== before) warnings.push(`"${c.name}" overlapped another clip on its track, moved to the track above`);
+        // every block gets a track named after it unless the agent picked one
+        const named = typeof track === 'string' && !!track.trim();
+        c.track = resolveTrack(p, named ? track : c.name, named ? warnings : null);
+        if (p.tracks.find((t) => t.id === c.track)?.locked) c.track = newBlockTrack(p, c.name).id;
+        if (!trackIsFree(p, c.track, c.start, c.duration, c.id)) {
+          // busy: a new track right above it, named after this block (not a neighbour's track)
+          const t0 = p.tracks.find((t) => t.id === c.track)!;
+          c.track = newBlockTrack(p, c.name, p.tracks.indexOf(t0)).id;
+          warnings.push(`"${c.name}" overlapped another clip on track "${t0.name}", put it on its own track "${p.tracks.find((t) => t.id === c.track)?.name}" above`);
+        }
+        nameNewTrack(p, c, existing);
         added.push(c);
       }
       checkTargets(p, warnings);
@@ -646,12 +714,16 @@ const impls: Record<string, Impl> = {
     const { errors, notes } = await validate(d, added.map((c) => c.id));
     const p = d.get().project;
     const names = added.map((c) => c.name);
+    const rows: Record<string, any>[] = [];
+    for (const c of added) {
+      const cur = p.clips.find((x) => x.id === c.id);
+      if (!cur) continue;
+      const parts = errors[cur.id] ? undefined : await partsOutline(cur, warnings);
+      rows.push({ id: cur.id, name: cur.name, track: p.tracks.find((t) => t.id === cur.track)?.name, start: cur.start, end: r3(cur.start + cur.duration), ...(parts ? { parts } : {}) });
+    }
     return finish(
       {
-        added: added.map((c) => {
-          const cur = p.clips.find((x) => x.id === c.id)!;
-          return { id: cur.id, name: cur.name, track: p.tracks.find((t) => t.id === cur.track)?.name, start: cur.start, end: r3(cur.start + cur.duration) };
-        }),
+        added: rows,
         warnings: [...warnings, ...notes],
         errors,
       },
@@ -665,6 +737,7 @@ const impls: Record<string, Impl> = {
     const touched: string[] = [];
     const moved: string[] = [];
     const pending: PendingParts = [];
+    const existing = new Set(d.get().project.tracks.map((t) => t.id));
     d.commit((p) => {
       for (const spec of updates) {
         const c = p.clips.find((x) => x.id === spec?.id) || p.clips.find((x) => x.name === spec?.id);
@@ -686,6 +759,7 @@ const impls: Record<string, Impl> = {
         const t0 = c.track;
         resolveOverlap(p, c.id);
         if (c.track !== t0) warnings.push(`"${c.name}" overlapped another clip on its track, moved to the track above`);
+        nameNewTrack(p, c, existing);
       }
       checkTargets(p, warnings);
     }, { transient: true });
@@ -693,7 +767,15 @@ const impls: Record<string, Impl> = {
     const { errors, notes } = await validate(d, touched);
     const p = d.get().project;
     const names = touched.map((id) => p.clips.find((c) => c.id === id)?.name || id);
-    return finish({ updated: touched, warnings: [...warnings, ...notes], errors }, touched.length ? `Updated ${names.length > 3 ? `${names.length} clips` : names.join(', ')}` : 'Update failed');
+    // the parts of clips whose code changed, so the agent sees how their rows read
+    const parts: Record<string, string[]> = {};
+    for (const spec of updates) {
+      const c = typeof spec?.code === 'string' ? p.clips.find((x) => x.id === spec.id || x.name === spec.id) : null;
+      if (!c || errors[c.id]) continue;
+      const o = await partsOutline(c, warnings);
+      if (o) parts[c.id] = o;
+    }
+    return finish({ updated: touched, parts, warnings: [...warnings, ...notes], errors }, touched.length ? `Updated ${names.length > 3 ? `${names.length} clips` : names.join(', ')}` : 'Update failed');
   },
 
   async delete_clips({ ids }, d) {

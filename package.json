@@ -51,7 +51,11 @@
     "test:linux-update": "packaging/linux/test-update.sh",
     "test:fit": "vite build && node tests/timeline_fit.mjs",
     "test:stagefit": "vite build && node tests/stage_fit.mjs",
-    "test:group": "vite build && node tests/group_clips.mjs"
+    "test:group": "vite build && node tests/group_clips.mjs",
+    "test:blocks": "vite build && node tests/agent_blocks.mjs",
+    "test:cutoff": "vite build && node tests/agent_cutoff.mjs",
+    "test:chats": "vite build && node tests/agent_history.mjs",
+    "test:aiprovider": "vite build && node tests/ai_provider.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.11"

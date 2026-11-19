@@ -69,11 +69,11 @@ try {
   const v0 = await app.evaluate(({ app }) => app.getVersion());
   const st = await win.evaluate(() => window.studio.updates.get());
   check(st.mode === 'install', `installed AppImage ${v0} can update itself (mode=${st.mode})`);
-  await win.click('[data-testid=update-check]');
-  await waitState(win, 'available', 60000);
-  check((await win.textContent('[data-testid=update-status]')).includes(`${NEXT_VERSION} is available`), `sees ${NEXT_VERSION} on the server (${el()})`);
+  // "Check" finds the new version and downloads it right away (no separate Download step)
   served = 0;
-  await win.click('[data-testid=update-download]');
+  await win.click('[data-testid=update-check]');
+  await win.waitForFunction(() => ['downloading', 'ready'].includes(document.querySelector('[data-testid=update-status]')?.getAttribute('data-state')), null, { timeout: 60000 });
+  check(true, `sees ${NEXT_VERSION} on the server and starts downloading (${el()})`);
   await waitState(win, 'ready', 900000);
   const size = fs.statSync(path.join(NEXT, 'MathStudio-x86_64.AppImage')).size;
   check(true, `downloaded (${el()}): ${(served / 1e6).toFixed(1)} MB transferred for a ${(size / 1e6).toFixed(0)} MB AppImage (${((100 * served) / size).toFixed(0)}%)`);

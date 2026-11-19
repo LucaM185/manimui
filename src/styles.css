@@ -147,7 +147,7 @@ a { color: var(--accent); cursor: pointer; }
 .chev.open { transform: rotate(90deg); }
 .lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
 .lib-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: grab; transition: border-color .12s, transform .12s; }
-.lib-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.lib-card:hover { border-color: var(--accent); }
 .lib-card:active { cursor: grabbing; }
 .lib-thumb { aspect-ratio: 16 / 9; background: #1b1d23; position: relative; display: grid; place-items: center; }
 .lib-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -540,19 +540,34 @@ h5 .anim-name { font-size: 11px; font-weight: 500; color: var(--muted); text-tra
 .right-col > .panel { flex: 1; min-height: 0; }
 .right-col .inspector > .panel-head { display: none; }
 .right-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); flex: none; }
-.right-tabs button { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: none; border-bottom: 2px solid transparent; padding: 6px 10px 7px; cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .6px; }
-.right-tabs button:hover { color: var(--text); }
-.right-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.right-tabs > button { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: none; border-bottom: 2px solid transparent; padding: 6px 10px 7px; cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .6px; }
+.right-tabs > button:hover { color: var(--text); }
+.right-tabs > button.on { color: var(--text); border-bottom-color: var(--accent); }
 .busy-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
 .faint { color: var(--faint); }
 .spin-icon { animation: spin 1s linear infinite; flex: none; }
 
 /* ------------------------------------------------------------- agent panel */
 .agent { user-select: text; }
-.ag-head { display: flex; align-items: center; gap: 7px; padding: 8px 10px 8px 12px; border-bottom: 1px solid var(--border); flex: none; }
-.ag-logo { color: #b9a2ff; }
-.ag-title { font-weight: 650; }
-.ag-model { color: var(--muted); font-size: 11px; text-transform: capitalize; background: var(--raised); border-radius: 10px; padding: 1px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.right-tabs { position: relative; align-items: center; }
+.ag-tab-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; padding-bottom: 3px; }
+.ag-tab-actions > button { padding: 0; width: 26px; height: 26px; border: 1px solid transparent; border-radius: 6px; text-transform: none; letter-spacing: 0; color: var(--muted); }
+.ag-tab-actions > button:hover:not(:disabled) { color: var(--text); background: var(--raised); }
+.ag-tab-actions > button.on { color: var(--text); background: var(--raised); }
+.ag-history { position: absolute; top: calc(100% + 4px); right: 8px; left: 8px; max-width: 420px; margin-left: auto; z-index: 50; background: var(--panel2); border: 1px solid var(--border2); border-radius: 9px; box-shadow: 0 14px 40px rgba(0,0,0,.5); display: flex; flex-direction: column; max-height: min(460px, 70vh); overflow: hidden; }
+.ag-history-search { display: flex; align-items: center; gap: 7px; padding: 0 10px; border-bottom: 1px solid var(--border); color: var(--faint); flex: none; }
+.ag-history-search input { flex: 1; background: transparent; border: none; box-shadow: none; padding: 9px 0; font-size: 12px; color: var(--text); }
+.ag-history-search input:focus { border: none; box-shadow: none; }
+.ag-history-list { overflow-y: auto; padding: 4px; }
+.ag-history-row { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 9px; border-radius: 6px; cursor: pointer; }
+.ag-history-row.on { background: var(--raised); }
+.ag-history-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--text); }
+.ag-history-sub { font-size: 10.5px; color: var(--faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-history-row.current .ag-history-title { color: var(--accent); }
+.ag-history-cur { color: var(--accent); }
+.ag-history-del { visibility: hidden; flex: none; }
+.ag-history-row.on .ag-history-del { visibility: visible; }
+.ag-history-empty { padding: 18px 10px; text-align: center; color: var(--faint); font-size: 12px; }
 .ag-scroll { flex: 1; overflow-y: auto; min-height: 0; padding: 12px 12px 6px; display: flex; flex-direction: column; gap: 8px; }
 .ag-scroll > * { flex-shrink: 0; }
 
@@ -679,11 +694,12 @@ h5 .anim-name { font-size: 11px; font-weight: 500; color: var(--muted); text-tra
 .proj-toolbar .seg { flex: none; }
 .proj-toolbar .seg button { flex: none; padding: 4px 11px; font-size: 12px; }
 .proj-dir { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; max-width: 40%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.proj-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
+.proj-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; scrollbar-gutter: stable; }
 .proj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-.proj-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color .12s, transform .12s; position: relative; }
+.proj-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color .12s, box-shadow .12s; position: relative; }
 .proj-card:hover, .proj-card.kb { border-color: var(--accent); }
-.proj-card:hover { transform: translateY(-1px); }
+/* No transform lift on hover: it grew the scroll area by 1px and toggled the scrollbar on/off (flicker). */
+.proj-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.35); }
 .proj-card.current { border-color: rgba(91, 157, 255, .55); box-shadow: 0 0 0 1px rgba(91, 157, 255, .35); }
 .proj-card.missing { opacity: .55; }
 .proj-thumb { aspect-ratio: 16 / 9; position: relative; display: grid; place-items: center; border-bottom: 1px solid var(--border); }

@@ -1,5 +1,7 @@
-// Self-update status, mirrored from the main process (electron/main.cjs "updates"). A background
-// check that finds a new version shows one toast per version and a dot on the top-bar Settings icon.
+// Self-update status, mirrored from the main process (electron/main.cjs "updates"). Installs that
+// can update themselves download a new version in the background and then show one toast,
+// "MathStudio x is ready · Restart" (it also installs on the next quit). Others get "x is available ·
+// Download", which opens the releases page. Either way there is a dot on the top-bar Settings icon.
 import { create } from 'zustand';
 import { useStore } from './store';
 import type { UpdateStatus } from './types';
@@ -7,16 +9,17 @@ import type { UpdateStatus } from './types';
 export const useUpdate = create<{ status: UpdateStatus | null }>(() => ({ status: null }));
 
 let started = false;
-let toasted = '';
+const toasted = new Set<string>();
 
 function apply(s: UpdateStatus) {
   useUpdate.setState({ status: s });
-  if (s.state === 'available' && s.silent && s.version && toasted !== s.version) {
-    toasted = s.version;
-    useStore.getState().toast(`MathStudio ${s.version} is available`, 'info', {
-      label: 'View',
-      run: () => useStore.setState({ settingsOpen: true }),
-    });
+  if (!s.silent || !s.version) return;
+  const once = (key: string) => !toasted.has(key) && !!toasted.add(key);
+  const api = window.studio.updates;
+  if (s.state === 'ready' && once(`ready ${s.version}`)) {
+    useStore.getState().toast(`MathStudio ${s.version} is ready`, 'info', { label: 'Restart', run: () => { api?.install(); } });
+  } else if (s.state === 'available' && s.mode === 'notify' && once(`available ${s.version}`)) {
+    useStore.getState().toast(`MathStudio ${s.version} is available`, 'info', { label: 'Download', run: () => { api?.openPage(); } });
   }
 }
 
@@ -29,7 +32,7 @@ export function initUpdates() {
 }
 
 /** worth a dot on the top-bar Settings icon */
-export const hasUpdate = (s: UpdateStatus | null) => !!s && (s.state === 'available' || s.state === 'ready' || s.state === 'downloading');
+export const hasUpdate = (s: UpdateStatus | null) => !!s && (s.state === 'available' || s.state === 'ready');
 
 export function formatBytes(n?: number) {
   if (!n && n !== 0) return '';

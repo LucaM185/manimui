@@ -388,6 +388,7 @@ ipcMain.handle('project:autosave', async (_e, { path: p, data }) => {
       writeRecents([{ path: target, opened }, ...readRecents().filter((r) => r.path !== p && r.path !== target)].sort((a, b) => b.opened - a.opened));
       try { fs.renameSync(thumbFile(p), thumbFile(target)); } catch (e) { /* no thumb */ }
       moveFavorite(p, target);
+      moveChats(p, target);
     } else if (!p) {
       touchRecent(target);
     }
@@ -650,6 +651,7 @@ ipcMain.handle('projects:rename', async (_e, { path: p, name }) => {
     const opened = (readRecents().find((r) => r.path === p) || {}).opened || Date.now();
     writeRecents([{ path: target, opened }, ...readRecents().filter((r) => r.path !== p && r.path !== target)].sort((a, b) => b.opened - a.opened));
     moveFavorite(p, target);
+    if (target !== p) moveChats(p, target);
     try {
       // same picture, new file: carry the thumbnail over to the new path / mtime
       const t = JSON.parse(fs.readFileSync(thumbFile(p), 'utf8'));
@@ -1057,10 +1059,90 @@ ipcMain.handle('checkpoint:read', (_e, hash) => queued(async () => {
 
 ipcMain.handle('checkpoint:dir', async () => CHECKPOINTS);
 
-// ------------------------------------------------------------------ AI agent (OpenRouter)
-// The key never reaches the renderer: requests are proxied from here.
-const AI_MODEL = process.env.MATHSTUDIO_AI_MODEL || 'anthropic/claude-haiku-5.5';
-const AI_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// ---------------------------------------------------------------- agent chat history
+// Every agent chat is saved (after each turn) so the user can resume it later, like Claude Code's
+// /resume. One gzipped JSON per chat + a small index with what the history list shows. Chats
+// belong to a project file (`path`); a chat of a project that has no file yet is matched by `sid`.
+const CHATS = process.env.MATHSTUDIO_CHATS || path.join(app.getPath('userData'), 'agent-chats');
+const CHAT_ID_RE = /^c[a-z0-9]{6,40}$/;
+const chatIndexFile = () => path.join(CHATS, 'index.json');
+function readChatIndex() {
+  try {
+    const list = JSON.parse(fs.readFileSync(chatIndexFile(), 'utf8'));
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+function writeChatIndex(list) {
+  fs.mkdirSync(CHATS, { recursive: true });
+  writeAtomic(chatIndexFile(), JSON.stringify(list));
+}
+let chatQueue = Promise.resolve();
+function chatQueued(fn) {
+  const p = chatQueue.then(fn, fn);
+  chatQueue = p.catch(() => {});
+  return p;
+}
+
+ipcMain.handle('chats:list', () => chatQueued(async () => readChatIndex().sort((a, b) => b.updated - a.updated)));
+
+ipcMain.handle('chats:save', (_e, chat) => chatQueued(async () => {
+  try {
+    if (!chat || !CHAT_ID_RE.test(String(chat.id))) return { error: 'bad chat id' };
+    const meta = {
+      id: chat.id,
+      path: typeof chat.path === 'string' ? chat.path : null,
+      sid: typeof chat.sid === 'string' ? chat.sid : null,
+      project: String(chat.project || ''),
+      title: String(chat.title || '').slice(0, 300),
+      created: +chat.created || Date.now(),
+      updated: Date.now(),
+      messages: +chat.messages || 0,
+      cost: +chat.cost || 0,
+    };
+    fs.mkdirSync(CHATS, { recursive: true });
+    const body = JSON.stringify({ ...meta, items: chat.items || [], history: chat.history || [] });
+    writeAtomic(path.join(CHATS, chat.id + '.json.gz'), zlib.gzipSync(body));
+    writeChatIndex([meta, ...readChatIndex().filter((c) => c.id !== chat.id)]);
+    return { ok: true, meta };
+  } catch (e) {
+    return { error: String(e.message || e) };
+  }
+}));
+
+ipcMain.handle('chats:read', async (_e, id) => {
+  try {
+    if (!CHAT_ID_RE.test(String(id))) return { error: 'bad chat id' };
+    return { chat: JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(CHATS, id + '.json.gz'))).toString('utf8')) };
+  } catch (e) {
+    return { error: String(e.message || e) };
+  }
+});
+
+ipcMain.handle('chats:delete', (_e, id) => chatQueued(async () => {
+  if (!CHAT_ID_RE.test(String(id))) return { error: 'bad chat id' };
+  try { fs.unlinkSync(path.join(CHATS, id + '.json.gz')); } catch (e) { /* already gone */ }
+  writeChatIndex(readChatIndex().filter((c) => c.id !== id));
+  return { ok: true };
+}));
+
+/** A project file was renamed: its chats follow it. */
+function moveChats(from, to) {
+  return chatQueued(async () => {
+    const list = readChatIndex();
+    if (!list.some((c) => c.path === from)) return;
+    writeChatIndex(list.map((c) => (c.path === from ? { ...c, path: to } : c)));
+  });
+}
+
+// ------------------------------------------------------------------ AI agent (OpenRouter or any OpenAI-compatible API)
+// Keys never reach the renderer: requests are proxied from here. The provider and its model
+// options live in settings.json (`ai`); OpenRouter is the default.
+const DEFAULT_OR_MODEL = process.env.MATHSTUDIO_AI_MODEL || 'anthropic/claude-haiku-5.5';
+// MATHSTUDIO_OPENROUTER_URL points it at a local mock (tests)
+const OR_BASE = (process.env.MATHSTUDIO_OPENROUTER_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
+const EFFORTS = ['off', 'minimal', 'low', 'medium', 'high'];
 const aiRequests = new Map(); // reqId -> AbortController
 
 function readEnvFile() {
@@ -1123,15 +1205,149 @@ function maskKey(k) {
   return k.length <= 12 ? '•'.repeat(k.length) : `${k.slice(0, 6)}…${k.slice(-4)}`;
 }
 
+/** Turn what the user pasted into an API base URL (".../v1"): trims slashes and a pasted endpoint path. */
+function normBaseUrl(u) {
+  let t = String(u || '').trim().replace(/\/+$/, '');
+  t = t.replace(/\/(chat\/completions|completions|models)$/, '');
+  return t;
+}
+
+function numOrNull(v, min, max) {
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
+}
+
+/**
+ * The AI configuration with defaults filled in:
+ *   provider  'openrouter' | 'custom'
+ *   openrouter { model, reasoning, maxTokens, temperature }
+ *   custom     { name, baseUrl, apiKey, model, reasoning, maxTokens, temperature, vision, cache }
+ * reasoning = thinking effort ('off' sends nothing); maxTokens / temperature null = the default
+ * (OpenRouter: the agent's own large cap; custom: whatever the server does).
+ */
+function aiConfig() {
+  const a = readSettings().ai || {};
+  const o = a.openrouter || {};
+  const c = a.custom || {};
+  return {
+    provider: a.provider === 'custom' ? 'custom' : 'openrouter',
+    openrouter: {
+      model: String(o.model || '').trim() || DEFAULT_OR_MODEL,
+      reasoning: EFFORTS.includes(o.reasoning) ? o.reasoning : 'medium',
+      maxTokens: typeof o.maxTokens === 'number' ? o.maxTokens : null,
+      temperature: typeof o.temperature === 'number' ? o.temperature : null,
+    },
+    custom: {
+      name: String(c.name || '').trim(),
+      baseUrl: normBaseUrl(c.baseUrl),
+      apiKey: String(c.apiKey || '').trim(),
+      model: String(c.model || '').trim(),
+      reasoning: EFFORTS.includes(c.reasoning) ? c.reasoning : 'off',
+      maxTokens: typeof c.maxTokens === 'number' ? c.maxTokens : null,
+      temperature: typeof c.temperature === 'number' ? c.temperature : null,
+      vision: c.vision !== false,
+      cache: c.cache === true,
+    },
+  };
+}
+
+function providerLabel(cfg = aiConfig()) {
+  if (cfg.provider === 'openrouter') return 'OpenRouter';
+  if (cfg.custom.name) return cfg.custom.name;
+  try { return new URL(cfg.custom.baseUrl).host || 'Custom provider'; } catch (e) { return 'Custom provider'; }
+}
+
+/** What the agent will call: endpoint, key, model and how to shape the request. */
+function aiTarget() {
+  const cfg = aiConfig();
+  if (cfg.provider === 'custom') {
+    const c = cfg.custom;
+    return { kind: 'custom', label: providerLabel(cfg), base: c.baseUrl, key: c.apiKey, model: c.model, opts: c, configured: !!(c.baseUrl && c.model) };
+  }
+  const key = aiKey();
+  return { kind: 'openrouter', label: 'OpenRouter', base: OR_BASE, key, model: cfg.openrouter.model, opts: cfg.openrouter, configured: !!key };
+}
+
 function publicSettings() {
   const s = readSettings();
   const info = aiKeyInfo();
+  const cfg = aiConfig();
+  const { apiKey, ...custom } = cfg.custom;
+  const t = aiTarget();
   return {
     quality: QUALITIES.includes(s.quality) ? s.quality : 'auto',
     key: { set: !!info.key, source: info.source, masked: maskKey(info.key) },
-    model: AI_MODEL,
+    model: t.model,
+    ai: {
+      provider: cfg.provider,
+      label: t.label,
+      configured: t.configured,
+      defaultModel: DEFAULT_OR_MODEL,
+      openrouter: cfg.openrouter,
+      custom: { ...custom, key: { set: !!apiKey, masked: maskKey(apiKey) } },
+    },
     file: SETTINGS_FILE,
   };
+}
+
+/** Validate a settings patch for `ai` against the stored config; returns { ai } or { error }. */
+function aiPatch(patch) {
+  const cur = readSettings().ai || {};
+  const next = { ...cur, openrouter: { ...(cur.openrouter || {}) }, custom: { ...(cur.custom || {}) } };
+  if ('provider' in patch) {
+    if (!['openrouter', 'custom'].includes(patch.provider)) return { error: `unknown provider ${patch.provider}` };
+    next.provider = patch.provider;
+  }
+  const opts = (src, dst) => {
+    if (!src) return null;
+    if ('model' in src) {
+      const m = String(src.model || '').trim();
+      if (m.length > 200 || /\s/.test(m)) return 'A model id has no spaces.';
+      dst.model = m || undefined;
+    }
+    if ('reasoning' in src) {
+      if (!EFFORTS.includes(src.reasoning)) return `unknown thinking effort ${src.reasoning}`;
+      dst.reasoning = src.reasoning;
+    }
+    if ('maxTokens' in src) {
+      const n = numOrNull(src.maxTokens, 1, 10000000);
+      if (n === undefined || (n != null && !Number.isInteger(n))) return 'Max output must be a whole number of tokens (or empty for the default).';
+      dst.maxTokens = n ?? undefined;
+    }
+    if ('temperature' in src) {
+      const n = numOrNull(src.temperature, 0, 2);
+      if (n === undefined) return 'Temperature must be between 0 and 2 (or empty for the default).';
+      dst.temperature = n ?? undefined;
+    }
+    return null;
+  };
+  const e1 = opts(patch.openrouter, next.openrouter);
+  if (e1) return { error: e1 };
+  const c = patch.custom;
+  const e2 = opts(c, next.custom);
+  if (e2) return { error: e2 };
+  if (c) {
+    if ('baseUrl' in c) {
+      const u = normBaseUrl(c.baseUrl);
+      if (u) {
+        let ok = false;
+        try { ok = ['http:', 'https:'].includes(new URL(u).protocol); } catch (e) { /* invalid */ }
+        if (!ok) return { error: 'The base URL must start with http:// or https:// (for example https://api.openai.com/v1).' };
+      }
+      next.custom.baseUrl = u || undefined;
+    }
+    if ('name' in c) next.custom.name = String(c.name || '').trim().slice(0, 60) || undefined;
+    if ('apiKey' in c) {
+      const k = c.apiKey == null ? '' : String(c.apiKey).trim();
+      if (k && !/^[\x21-\x7e]{4,500}$/.test(k)) return { error: 'That does not look like an API key (no spaces).' };
+      next.custom.apiKey = k || undefined;
+    }
+    if ('vision' in c) next.custom.vision = !!c.vision;
+    if ('cache' in c) next.custom.cache = !!c.cache;
+  }
+  for (const o of [next.openrouter, next.custom]) for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
+  return { ai: next };
 }
 
 ipcMain.handle('settings:get', async () => publicSettings());
@@ -1146,6 +1362,11 @@ ipcMain.handle('settings:set', async (_e, patch) => {
     const k = patch.openrouterKey == null ? '' : String(patch.openrouterKey).trim();
     if (k && !/^[\x21-\x7e]{8,300}$/.test(k)) return { error: 'That does not look like an API key (no spaces, at least 8 characters).' };
     p.openrouterKey = k || null;
+  }
+  if (patch && patch.ai) {
+    const r = aiPatch(patch.ai);
+    if (r.error) return { error: r.error };
+    p.ai = r.ai;
   }
   try {
     writeSettings(p);
@@ -1163,7 +1384,7 @@ ipcMain.handle('settings:testKey', async (_e, candidate) => {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 12000);
   try {
-    const r = await fetch('https://openrouter.ai/api/v1/key', { headers: { Authorization: `Bearer ${key}` }, signal: ctl.signal });
+    const r = await fetch(`${OR_BASE}/key`, { headers: { Authorization: `Bearer ${key}` }, signal: ctl.signal });
     if (r.status === 401 || r.status === 403) return { ok: false, error: `OpenRouter rejected this key (${r.status}).` };
     if (!r.ok) return { ok: false, error: `OpenRouter answered ${r.status}.` };
     const j = await r.json().catch(() => ({}));
@@ -1176,7 +1397,100 @@ ipcMain.handle('settings:testKey', async (_e, candidate) => {
   }
 });
 
-ipcMain.handle('ai:status', async () => ({ configured: !!aiKey(), model: AI_MODEL }));
+/**
+ * The models a provider offers (GET <base>/models) — also the connection test for a custom
+ * provider. `draft` may carry an unsaved baseUrl / apiKey; anything missing comes from settings.
+ */
+ipcMain.handle('settings:models', async (_e, draft = {}) => {
+  const cfg = aiConfig();
+  const provider = draft.provider || cfg.provider;
+  let base;
+  let key;
+  if (provider === 'custom') {
+    base = normBaseUrl(draft.baseUrl != null ? draft.baseUrl : cfg.custom.baseUrl);
+    key = String(draft.apiKey || '').trim() || cfg.custom.apiKey;
+    if (!base) return { ok: false, error: 'Set the base URL first.' };
+  } else {
+    base = OR_BASE;
+    key = aiKey();
+  }
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 12000);
+  const who = provider === 'custom' ? (() => { try { return new URL(base).host; } catch (e) { return base; } })() : 'OpenRouter';
+  try {
+    // OpenRouter lists hundreds of models: only the ones that can call tools are any use here
+    const url = provider === 'custom' ? `${base}/models` : `${base}/models?supported_parameters=tools`;
+    const r = await fetch(url, { headers: key ? { Authorization: `Bearer ${key}` } : {}, signal: ctl.signal });
+    if (r.status === 401 || r.status === 403) return { ok: false, error: `${who} rejected the key (${r.status}).` };
+    if (!r.ok) return { ok: false, error: `${who} answered ${r.status} for ${url}.` };
+    const j = await r.json().catch(() => null);
+    const list = Array.isArray(j) ? j : Array.isArray(j && j.data) ? j.data : Array.isArray(j && j.models) ? j.models : null;
+    if (!list) return { ok: false, error: `${who} did not return a model list — is this an OpenAI-compatible base URL (usually ending in /v1)?` };
+    const models = [...new Set(list.map((m) => (typeof m === 'string' ? m : m && (m.id || m.name || m.model))).filter((m) => typeof m === 'string' && m))].sort();
+    return { ok: true, models };
+  } catch (e) {
+    return { ok: false, error: e.name === 'AbortError' ? `No answer from ${who} (timeout).` : `Could not reach ${who}: ${e.cause && e.cause.code ? e.cause.code : e.message}` };
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
+ipcMain.handle('ai:status', async () => {
+  const t = aiTarget();
+  return { configured: t.configured, model: t.model, provider: t.kind, label: t.label };
+});
+
+/** Text of an all-text content array (for servers that only take string content). */
+function flattenText(content) {
+  if (!Array.isArray(content) || !content.every((p) => p && p.type === 'text')) return content;
+  return content.map((p) => p.text).join('\n\n');
+}
+
+/**
+ * The request body the agent built (OpenRouter-flavoured: cache_control breakpoints, reasoning
+ * details, `reasoning`, `usage`) shaped for the target provider, with its model options applied.
+ */
+function shapeBody(body, t) {
+  const o = t.opts;
+  const out = { ...body, model: t.model, stream: true };
+  if (t.kind === 'openrouter') {
+    out.usage = { include: true };
+    if (o.reasoning === 'off') delete out.reasoning;
+    else out.reasoning = { effort: o.reasoning };
+    if (o.maxTokens) out.max_tokens = o.maxTokens;
+    if (o.temperature != null) out.temperature = o.temperature;
+    return out;
+  }
+  delete out.reasoning;
+  delete out.usage;
+  delete out.max_tokens;
+  out.stream_options = { include_usage: true };
+  if (o.reasoning !== 'off') out.reasoning_effort = o.reasoning;
+  // OpenAI's own API wants max_completion_tokens (its reasoning models refuse max_tokens)
+  if (o.maxTokens) out[/(^|\.)openai\.com$/.test((() => { try { return new URL(t.base).hostname; } catch (e) { return ''; } })()) ? 'max_completion_tokens' : 'max_tokens'] = o.maxTokens;
+  if (o.temperature != null) out.temperature = o.temperature;
+  out.messages = (body.messages || []).map((m) => {
+    const { reasoning_details: _rd, reasoning: _r, ...rest } = m;
+    let content = rest.content;
+    if (Array.isArray(content)) {
+      if (!o.vision) {
+        const n = content.filter((p) => p && p.type === 'image_url').length;
+        content = content.filter((p) => !p || p.type !== 'image_url');
+        if (n) content.push({ type: 'text', text: `(${n} rendered image${n > 1 ? 's' : ''} left out: image input is off for this model)` });
+      }
+      if (!o.cache) {
+        content = content.map((p) => {
+          if (!p || !p.cache_control) return p;
+          const { cache_control: _c, ...q } = p;
+          return q;
+        });
+        content = flattenText(content);
+      }
+    }
+    return { ...rest, content };
+  });
+  return out;
+}
 
 ipcMain.handle('ai:abort', async (_e, reqId) => {
   const c = aiRequests.get(reqId);
@@ -1189,8 +1503,13 @@ ipcMain.handle('ai:abort', async (_e, reqId) => {
  * messages; the promise resolves with the assembled assistant message.
  */
 ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
-  const key = aiKey();
-  if (!key) return { error: 'No OpenRouter key. Add one in Settings (⌘,).', code: 'nokey' };
+  const t = aiTarget();
+  if (!t.configured) {
+    return t.kind === 'openrouter'
+      ? { error: 'No OpenRouter key. Add one in Settings (⌘,).', code: 'nokey' }
+      : { error: `${t.label}: set the base URL and model in Settings (⌘,).`, code: 'nokey' };
+  }
+  const key = t.key;
   const sender = e.sender;
   const emit = (ev) => { if (!sender.isDestroyed()) sender.send('ai:event', { reqId, ...ev }); };
   const ctrl = new AbortController();
@@ -1202,15 +1521,14 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
   try {
     let res = null;
     for (let attempt = 0; attempt < 3; attempt++) {
-      res = await fetch(AI_URL, {
+      const headers = { 'Content-Type': 'application/json' };
+      if (key) headers.Authorization = `Bearer ${key}`;
+      if (t.kind === 'openrouter') headers['X-Title'] = 'MathStudio';
+      res = await fetch(`${t.base}/chat/completions`, {
         method: 'POST',
         signal: ctrl.signal,
-        headers: {
-          Authorization: `Bearer ${key}`,
-          'Content-Type': 'application/json',
-          'X-Title': 'MathStudio',
-        },
-        body: JSON.stringify({ model: AI_MODEL, stream: true, usage: { include: true }, ...body }),
+        headers,
+        body: JSON.stringify(shapeBody(body, t)),
       });
       if (res.ok || ![429, 500, 502, 503, 504].includes(res.status)) break;
       await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
@@ -1219,7 +1537,9 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
       const text = await res.text();
       let detail = text;
       try { detail = JSON.parse(text).error?.message || text; } catch (_) { /* not json */ }
-      return { error: `OpenRouter ${res.status}: ${String(detail).slice(0, 400)}`, code: res.status === 401 ? 'nokey' : 'http' };
+      if (t.kind === 'custom' && (res.status === 401 || res.status === 403)) return { error: `${t.label} rejected the API key (${res.status}) — check it in Settings (⌘,).`, code: 'http' };
+      if (t.kind === 'custom' && res.status === 404) return { error: `${t.label} 404 for ${t.base}/chat/completions — check the base URL and the model id "${t.model}". ${String(detail).slice(0, 200)}`, code: 'http' };
+      return { error: `${t.label} ${res.status}: ${String(detail).slice(0, 400)}`, code: res.status === 401 ? 'nokey' : 'http' };
     }
     const decoder = new TextDecoder();
     let buf = '';
@@ -1234,7 +1554,7 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
         if (data === '[DONE]') continue;
         let j;
         try { j = JSON.parse(data); } catch (_) { continue; }
-        if (j.error) return { error: `OpenRouter: ${j.error.message || JSON.stringify(j.error)}`, code: 'stream', partial: msg };
+        if (j.error) return { error: `${t.label}: ${j.error.message || JSON.stringify(j.error)}`, code: 'stream', partial: msg };
         if (j.usage) usage = j.usage;
         if (j.provider) provider = j.provider;
         const ch = j.choices && j.choices[0];
@@ -1245,7 +1565,9 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
           msg.content += d.content;
           emit({ type: 'text', text: d.content });
         }
-        if (d.reasoning) emit({ type: 'reasoning', text: d.reasoning });
+        // `reasoning` (OpenRouter) or `reasoning_content` (vLLM, LM Studio, llama.cpp …)
+        const think = typeof d.reasoning === 'string' ? d.reasoning : typeof d.reasoning_content === 'string' ? d.reasoning_content : '';
+        if (think) emit({ type: 'reasoning', text: think });
         if (Array.isArray(d.reasoning_details)) msg.reasoning_details.push(...d.reasoning_details);
         for (const tc of d.tool_calls || []) {
           const i = tc.index ?? msg.tool_calls.length;
@@ -1264,6 +1586,8 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
     aiRequests.delete(reqId);
   }
   msg.tool_calls = msg.tool_calls.filter(Boolean);
+  // some servers (Ollama) send calls without ids; tool results must point at one
+  msg.tool_calls.forEach((c, i) => { if (!c.id) c.id = `call_${reqId}_${i}`; });
   if (!msg.tool_calls.length) delete msg.tool_calls;
   if (!msg.reasoning_details.length) delete msg.reasoning_details;
   // with the user's own provider key (BYOK) OpenRouter reports cost 0; show what the provider bills
@@ -1275,6 +1599,7 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
     const line = { t: new Date().toISOString(), provider, finish, prompt: usage.prompt_tokens, cached: d.cached_tokens || 0, written: d.cache_write_tokens || 0, out: usage.completion_tokens, cost: usage.cost };
     try { fs.appendFileSync(process.env.MATHSTUDIO_AI_LOG, `${JSON.stringify(line)}\n`); } catch (_) { /* best effort */ }
   }
+  if (!provider && t.kind === 'custom') provider = t.label;
   return { message: msg, finish, usage, provider };
 });
 
@@ -1399,6 +1724,9 @@ async function checkForUpdate({ silent } = {}) {
     if (r && r.isUpdateAvailable) {
       const info = r.updateInfo;
       setUpdate({ state: 'available', version: info.version, notes: notesText(info.releaseNotes), date: info.releaseDate || null, silent: !!silent });
+      // Installs that can update themselves fetch it right away (only the changed blocks when a
+      // previous download is cached); the user is asked once, when it is ready: "Restart".
+      if (mode === 'install') return downloadUpdate({ silent });
     } else {
       setUpdate({ state: 'latest', version: r && r.updateInfo ? r.updateInfo.version : app.getVersion() });
     }
@@ -1427,18 +1755,29 @@ function friendlyUpdateError(e) {
 ipcMain.handle('update:get', async () => publicUpdate());
 ipcMain.handle('update:check', async () => checkForUpdate({ silent: false }));
 
+/** available → downloading → ready. A background download that fails falls back to "available"
+ *  (Settings offers Download again) instead of showing an error nobody asked for. */
+async function downloadUpdate({ silent } = {}) {
+  if (update.state !== 'available') return publicUpdate();
+  const avail = update;
+  const { version, notes, date } = avail;
+  setUpdate({ state: 'downloading', version, notes, date, percent: 0, silent: !!silent });
+  try {
+    await getUpdater().downloadUpdate();
+    setUpdate({ state: 'ready', version, notes, date, silent: !!silent });
+  } catch (e) {
+    console.error('[update] download failed:', (e && e.message) || e);
+    if (silent) setUpdate({ ...avail, silent: true });
+    else setUpdate({ state: 'error', error: friendlyUpdateError(e), version });
+  }
+  return publicUpdate();
+}
+
 ipcMain.handle('update:download', async () => {
   if (updateMode() !== 'install') return { error: 'This installation cannot update itself — download the new version from the releases page.' };
   if (update.state !== 'available') return publicUpdate();
-  const version = update.version;
-  setUpdate({ state: 'downloading', version, notes: update.notes, percent: 0 });
-  try {
-    await getUpdater().downloadUpdate();
-    setUpdate({ state: 'ready', version, notes: update.notes });
-  } catch (e) {
-    setUpdate({ state: 'error', error: friendlyUpdateError(e), version });
-  }
-  return publicUpdate();
+  // re-check first: the background download that failed may have had stale release info
+  return checkForUpdate({ silent: false });
 });
 
 ipcMain.handle('update:install', async () => {

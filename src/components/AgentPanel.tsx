@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  AlertTriangle, ArrowUp, BookOpen, Check, ChevronRight, Eye, FileCode, KeyRound, Loader2, MessageSquarePlus,
-  MousePointerClick, Pencil, Plus, RotateCcw, Rows3, Settings2, Sparkles, Square, Trash2, Undo2, Video,
+  AlertTriangle, ArrowUp, BookOpen, Check, ChevronRight, Clock, Eye, FileCode, KeyRound, Loader2, MessageCirclePlus,
+  MousePointerClick, Pencil, Plus, RotateCcw, Rows3, Search, Settings2, Sparkles, Square, Trash2, Undo2, Video, X,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { CAMERA_ID } from '../ops';
-import { canUndoTurn, newChat, refreshStatus, retry, rewindTo, send, stop, undoTurn, useAgent, type ChatItem } from '../agent/agent';
+import { canUndoTurn, deleteChat, listChats, newChat, refreshStatus, resumeChat, retry, rewindTo, send, stop, undoTurn, useAgent, type ChatItem } from '../agent/agent';
+import type { ChatMeta } from '../types';
 
 const TOOL_ICONS: Record<string, any> = {
   add_clips: Plus,
@@ -190,8 +191,120 @@ function DoneRow({ it }: { it: Extract<ChatItem, { kind: 'done' }> }) {
     <div className="ag-done">
       {it.changed ? <span title="The whole turn is one undo step (⌘Z)">Changes applied · ⌘Z undoes</span> : <span>No changes</span>}
       <span className="spacer" />
-      {it.cost ? <span className="faint" title="OpenRouter cost of this turn">${it.cost < 0.01 ? it.cost.toFixed(4) : it.cost.toFixed(3)}</span> : null}
+      {it.cost ? <span className="faint" title="Cost of this turn (as reported by the provider)">${it.cost < 0.01 ? it.cost.toFixed(4) : it.cost.toFixed(3)}</span> : null}
       {can && <button className="btn small ghost" onClick={() => undoTurn(it)} data-testid="agent-undo"><Undo2 size={12} /> Undo</button>}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ history + new chat (tab bar)
+function ago(t: number) {
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 86400 * 7) return `${Math.floor(s / 86400)}d ago`;
+  return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function ChatHistory({ onClose }: { onClose: () => void }) {
+  const chatId = useAgent((s) => s.chatId);
+  const [chats, setChats] = useState<ChatMeta[] | null>(null);
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { listChats().then(setChats); }, []);
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      const t = e.target as HTMLElement;
+      if (!box.current?.contains(t) && !t.closest('[data-testid=agent-history-btn]')) onClose();
+    };
+    window.addEventListener('pointerdown', down, true);
+    return () => window.removeEventListener('pointerdown', down, true);
+  }, [onClose]);
+
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = (chats || []).filter((c) => words.every((w) => c.title.toLowerCase().includes(w)));
+  const cur = Math.min(sel, Math.max(0, shown.length - 1));
+  useEffect(() => { list.current?.querySelector('.on')?.scrollIntoView({ block: 'nearest' }); }, [cur]);
+
+  const open = async (c: ChatMeta) => {
+    if (await resumeChat(c.id)) onClose();
+  };
+  const remove = async (c: ChatMeta) => {
+    await deleteChat(c.id);
+    setChats((cs) => (cs || []).filter((x) => x.id !== c.id));
+  };
+
+  return (
+    <div className="ag-history" ref={box} data-testid="agent-history">
+      <div className="ag-history-search">
+        <Search size={12} />
+        <input
+          autoFocus
+          value={q}
+          placeholder="Search chats"
+          onChange={(e) => { setQ(e.target.value); setSel(0); }}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setSel(Math.min(cur + 1, shown.length - 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(Math.max(cur - 1, 0)); }
+            else if (e.key === 'Enter' && shown[cur]) { e.preventDefault(); open(shown[cur]); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
+          }}
+          data-testid="agent-history-search"
+        />
+      </div>
+      <div className="ag-history-list" ref={list}>
+        {chats === null ? null : !shown.length ? (
+          <div className="ag-history-empty">{chats.length ? 'No chats match.' : 'No past chats in this project yet.'}</div>
+        ) : (
+          shown.map((c, i) => (
+            <div
+              key={c.id}
+              className={`ag-history-row ${i === cur ? 'on' : ''} ${c.id === chatId ? 'current' : ''}`}
+              onMouseEnter={() => setSel(i)}
+              onClick={() => open(c)}
+              data-testid="agent-history-row"
+            >
+              <div className="grow">
+                <div className="ag-history-title">{c.title || 'Untitled chat'}</div>
+                <div className="ag-history-sub">
+                  {ago(c.updated)} · {c.messages} message{c.messages === 1 ? '' : 's'}
+                  {c.cost > 0 && <> · ${c.cost < 0.01 ? c.cost.toFixed(4) : c.cost.toFixed(3)}</>}
+                  {c.id === chatId && <> · <span className="ag-history-cur">current</span></>}
+                </div>
+              </div>
+              <button className="mini ag-history-del" title="Delete this chat" onClick={(e) => { e.stopPropagation(); remove(c); }} data-testid="agent-history-delete"><X size={12} /></button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** History and New chat, on the right of the Inspector / AI Agent tabs. */
+export function AgentTabActions() {
+  const running = useAgent((s) => s.running);
+  const empty = useAgent((s) => !s.items.length);
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ag-tab-actions">
+      <button
+        className={`mini ${open ? 'on' : ''}`}
+        onClick={() => setOpen(!open)}
+        disabled={running}
+        title="Chat history"
+        data-testid="agent-history-btn"
+      >
+        <Clock size={15} />
+      </button>
+      <button className="mini" onClick={() => { setOpen(false); newChat(); window.dispatchEvent(new Event('agent:focus')); }} disabled={running || empty} title="New chat" data-testid="agent-new">
+        <MessageCirclePlus size={15} />
+      </button>
+      {open && !running && <ChatHistory onClose={() => setOpen(false)} />}
     </div>
   );
 }
@@ -203,7 +316,6 @@ export default function AgentPanel() {
   const phase = useAgent((s) => s.phase);
   const status = useAgent((s) => s.status);
   const draft = useAgent((s) => s.draft);
-  const cost = useAgent((s) => s.cost);
   const selection = useStore((s) => s.selection);
   const clips = useStore((s) => s.project.clips);
   const scroller = useRef<HTMLDivElement>(null);
@@ -242,22 +354,22 @@ export default function AgentPanel() {
 
   return (
     <aside className="panel agent" data-testid="agent-panel">
-      <div className="ag-head">
-        <Sparkles size={13} className="ag-logo" />
-        <span className="ag-title">AI Agent</span>
-        <span className="ag-model" title={status?.model}>{status?.model ? status.model.split('/').pop()!.replace(/-/g, ' ') : ''}</span>
-        <span className="spacer" />
-        {cost > 0 && <span className="faint small" title="Cost of this chat (OpenRouter)">${cost.toFixed(cost < 0.01 ? 4 : 3)}</span>}
-        <button className="mini" onClick={() => newChat()} disabled={running || !items.length} title="New chat" data-testid="agent-new"><MessageSquarePlus size={14} /></button>
-      </div>
-
       <div className="ag-scroll" ref={scroller} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}>
         {status && !status.configured && (
           <div className="ag-nokey">
             <KeyRound size={16} />
             <div>
-              <b>Add your OpenRouter key</b>
-              <p>The agent runs on OpenRouter. Paste your key in <a onClick={() => useStore.setState({ settingsOpen: true })} data-testid="agent-open-settings">Settings</a>, then <a onClick={() => refreshStatus()}>check again</a>.</p>
+              {status.provider === 'custom' ? (
+                <>
+                  <b>Finish setting up {status.label || 'your provider'}</b>
+                  <p>Set the base URL and model in <a onClick={() => useStore.setState({ settingsOpen: true })} data-testid="agent-open-settings">Settings</a>, then <a onClick={() => refreshStatus()}>check again</a>.</p>
+                </>
+              ) : (
+                <>
+                  <b>Add your OpenRouter key</b>
+                  <p>The agent runs on OpenRouter, or on any OpenAI-compatible API. Paste a key or pick a provider in <a onClick={() => useStore.setState({ settingsOpen: true })} data-testid="agent-open-settings">Settings</a>, then <a onClick={() => refreshStatus()}>check again</a>.</p>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -297,7 +409,7 @@ export default function AgentPanel() {
             ref={input}
             rows={1}
             value={draft}
-            placeholder={status?.configured === false ? 'Add an OpenRouter key to start' : 'Describe what to build or change…'}
+            placeholder={status?.configured === false ? (status.provider === 'custom' ? 'Set up the AI provider in Settings to start' : 'Add an OpenRouter key to start') : 'Describe what to build or change…'}
             onChange={(e) => useAgent.setState({ draft: e.target.value })}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {

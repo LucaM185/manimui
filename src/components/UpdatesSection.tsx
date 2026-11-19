@@ -1,4 +1,6 @@
-// Settings → Updates row: version, status, one action button, auto-check toggle.
+// Settings → Updates row: version, status, one action button, auto-check toggle. Installs that
+// update themselves download on their own (see src/updates.ts); "Download" only appears when that
+// background download failed.
 // AppImage, Windows and Mac release builds install updates themselves; other installs get a link
 // to the releases page (see updateMode in main.cjs).
 import { useState } from 'react';
