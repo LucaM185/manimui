@@ -396,6 +396,47 @@ wa = np.asarray(_Img.open(_io.BytesIO(whole)).convert("RGBA")).astype(int)
 ma = np.asarray(_Img.open(_io.BytesIO(mixed)).convert("RGBA")).astype(int)
 check(wa.shape == ma.shape and np.abs(wa - ma).mean() < 0.5, f"interleaved filmstrip matches ({wa.shape} vs {ma.shape})")
 
+# thumbnails show an element's look, not how it is turned: flat content tipped out of the screen
+# plane faces the camera again (a 90° forward tilt used to leave just a line on the timeline card)
+print("6b. tilted flat content faces the camera in thumbnails / filmstrips")
+
+
+def _thumb(code, dynamic=False):
+    c = {"id": "tt", "item": "custom_dynamic" if dynamic else "custom", "name": "T", "params": {}, "code": code, "dynamic": dynamic}
+    return np.asarray(_Img.open(_io.BytesIO(R.clip_thumb(c))).convert("RGBA")).astype(int)
+
+
+def _same(a, b, tol=12):
+    if a.shape != b.shape:
+        b = np.asarray(_Img.fromarray(b.astype(np.uint8), "RGBA").resize((a.shape[1], a.shape[0]), _Img.LANCZOS)).astype(int)
+    return float(np.abs(a[:, :, 3] - b[:, :, 3]).mean()) < tol
+
+
+_TXT = "return Text('Tilt me', font_size=72).set_fill(WHITE, 1)"
+up = _thumb(_TXT)
+check(up.shape[1] > 2.5 * up.shape[0], f"upright text thumb is wide ({up.shape})")
+for label, rot in [("tipped forward 90°", "rotate(90 * DEGREES, axis=RIGHT)"), ("laid flat (-90°)", "rotate(-90 * DEGREES, axis=RIGHT)"),
+                   ("tilted 40°", "rotate(40 * DEGREES, axis=RIGHT)"), ("turned 70° about y", "rotate(70 * DEGREES, axis=UP)"),
+                   ("tipped past edge-on (150°)", "rotate(150 * DEGREES, axis=RIGHT)")]:
+    th = _thumb(_TXT.replace(".set_fill(WHITE, 1)", f".set_fill(WHITE, 1).{rot}"))
+    check(abs(th.shape[1] / th.shape[0] - up.shape[1] / up.shape[0]) < 0.25 and _same(up, th), f"text {label}: thumb reads like the upright one ({th.shape} vs {up.shape})")
+# a flip is a look (mirrored), not a tilt: kept
+fl = _thumb(_TXT.replace(".set_fill(WHITE, 1)", ".set_fill(WHITE, 1).flip()"))
+check(_same(up[:, ::-1], fl) and not _same(up, fl, tol=4), "flipped text stays mirrored")
+# a diagonal arrow keeps its in-plane direction
+ar = _thumb("return Arrow(LEFT + DOWN, RIGHT + UP)")
+check(0.6 < ar.shape[1] / ar.shape[0] < 1.6, f"in-plane rotation (diagonal arrow) untouched ({ar.shape})")
+# real 3D content is not flattened
+from manimlib import Cube as _Cube, RIGHT as _RIGHT  # noqa: E402
+_cube = [_Cube().rotate(0.5, axis=_RIGHT)]
+check(server.face_front([_cube])[0] is _cube, "3D (non-flat) content is left as it is")
+# filmstrips turn every frame the same way
+tilt_dyn = {"id": "td", "item": "custom_dynamic", "name": "TD", "params": {}, "dynamic": True, "duration": 2.0,
+            "code": "return Text('Grow', font_size=48 + 24 * t).set_fill(WHITE, 1).rotate(90 * DEGREES, axis=RIGHT)"}
+sa = np.asarray(_Img.open(_io.BytesIO(R.clip_strip(tilt_dyn, [0.25, 1.75]))).convert("RGBA")).astype(int)
+fw = sa.shape[1] // 2
+check(sa.shape[0] > 30 and (sa[:, :fw, 3] > 8).any(axis=1).sum() > 0.3 * sa.shape[0], f"tilted dynamic text filmstrip faces the camera ({sa.shape})")
+
 # ----------------------------------------------------------------------------------------
 print("7. code generation")
 everything = []

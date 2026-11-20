@@ -95,6 +95,50 @@ RUNTIME_VERSION = hashlib.sha1(
 ).hexdigest()[:10]
 
 
+def face_front(mob_lists):
+    """Timeline thumbnails show what an element looks like, not how it is turned in the scene: flat
+    content tipped out of the screen plane (text laid down with a 90° forward tilt reads as a line)
+    is turned to face the camera. `mob_lists` = one list of mobjects per frame; one rotation is
+    computed from all of them so every frame of a strip turns the same way. Returns copies when
+    something turns, else the lists unchanged. Flat content that already faces the screen (or its
+    back: a flip() is a look) and anything not flat (real 3D) is left alone."""
+    fams = [s for ms in mob_lists for m in ms for s in m.get_family() if s.has_points()]
+    if not fams:
+        return mob_lists
+    pts = np.concatenate([s.get_points() for s in fams])
+    if len(pts) > 20000:
+        pts = pts[:: len(pts) // 20000 + 1]
+    c = pts.mean(axis=0)
+    _, sv, vt = np.linalg.svd(pts - c, full_matrices=False)
+    if sv[0] < 1e-6 or sv[1] < 0.02 * sv[0] or sv[2] > 0.02 * sv[0]:
+        return mob_lists  # a point / a straight line (no plane) or not flat
+    n = vt[2] / np.linalg.norm(vt[2])
+    if abs(n[2]) > np.cos(np.radians(1.0)):
+        return mob_lists  # already in the screen plane
+    # which side is the front: the signed area of filled outlines (text, shapes: +z when upright)
+    area = np.zeros(3)
+    for s in fams:
+        if hasattr(s, "get_area_vector"):
+            area += s.get_area_vector()
+    side = float(np.dot(area, n))
+    if abs(side) > 1e-9:
+        n = n if side > 0 else -n
+    elif abs(n[2]) > 1e-3:
+        n = n if n[2] > 0 else -n  # outlines only: the smaller turn
+    else:
+        n = n if n[1] <= 0 else -n  # edge-on outlines: assume it was tipped forward
+    axis = np.cross(n, [0.0, 0.0, 1.0])
+    angle = float(np.arccos(np.clip(n[2], -1.0, 1.0)))
+    out = []
+    for ms in mob_lists:
+        cp = [m.copy() for m in ms]
+        for m in cp:
+            m.rotate(angle, axis=axis / np.linalg.norm(axis), about_point=c)
+            m.shift([0.0, 0.0, -c[2]])  # on the screen plane (z = 0): no perspective shrink
+        out.append(cp)
+    return out
+
+
 def log(*a):
     print("[engine]", *a, file=sys.stderr, flush=True)
 
@@ -310,6 +354,8 @@ class Renderer:
         clip_obj = timeline.clips[0]
         if clip_obj.error:
             raise RuntimeError(clip_obj.error)
+        if not item.get("view"):
+            mobs = face_front([mobs])[0]
         W, H = 768, 432
         self.use_resolution(W, H)
         self.camera.background_rgba = [0.0, 0.0, 0.0, 0.0]
@@ -407,6 +453,8 @@ class Renderer:
         err = next((c.error for c in timeline.clips if c.error), None)
         if err and not any(frames):
             raise RuntimeError(err)
+        if not item.get("view"):
+            frames = face_front(frames)
         W, H = 640, 360
         everything = [m for f in frames for m in f]
         fit = None
@@ -976,7 +1024,7 @@ class Handler(BaseHTTPRequestHandler):
                 src = codegen.factory_source(c, "f")
                 # only the globals this clip reads are part of its look
                 gl = [g for g in body.get("globals") or [] if re.search(r"\b%s\b" % re.escape(str(g.get("name") or "")), src)]
-                key = hashlib.sha1((src + str(codegen.is_dynamic(c)) + RUNTIME_VERSION + codegen.globals_source({"globals": gl})).encode()).hexdigest()[:16]
+                key = hashlib.sha1((src + str(codegen.is_dynamic(c)) + RUNTIME_VERSION + "f1" + codegen.globals_source({"globals": gl})).encode()).hexdigest()[:16]
                 target = os.path.join(THUMB_DIR, f"clip-{key}.png")
                 if not os.path.exists(target):
                     try:
@@ -998,7 +1046,7 @@ class Handler(BaseHTTPRequestHandler):
                 ex = c.get("exit") or {}
                 sig = json.dumps([codegen.is_dynamic(c), bool(tg and codegen.is_dynamic(tg)), c.get("duration"), times,
                                   [ex.get("type"), ex.get("duration"), ex.get("rate")] if tg else None])
-                key = hashlib.sha1((src + sig + RUNTIME_VERSION + "s1" + codegen.globals_source({"globals": gl})).encode()).hexdigest()[:16]
+                key = hashlib.sha1((src + sig + RUNTIME_VERSION + "s2" + codegen.globals_source({"globals": gl})).encode()).hexdigest()[:16]
                 out = os.path.join(THUMB_DIR, f"strip-{key}.png")
                 if not os.path.exists(out):
                     try:
