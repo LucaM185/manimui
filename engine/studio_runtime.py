@@ -1,5 +1,5 @@
 """
-MathStudio runtime for ManimGL.
+ManimUI runtime for ManimGL.
 
 A timeline of *clips*. Each clip owns one mobject (built by a factory function),
 lives on a track (tracks decide the drawing order / z order), and has:
@@ -258,7 +258,7 @@ _MEMO_CLASSES = (Text, MarkupText, Tex, TexText)
 
 
 # --------------------------------------------------------------------------------------
-# Imported mobjects (mathstudio library)
+# Imported mobjects (ManimUI library)
 # --------------------------------------------------------------------------------------
 def collect_scene(scene_cls):
     """Run a Scene's construct() without a window and return what it builds as one VGroup.
@@ -537,7 +537,7 @@ def apply_transform(mob: Mobject, tr: dict):
 def keep_origin(mob, point=ORIGIN):
     """Pad `mob`'s bounding box with invisible points so that it is centred on `point`.
 
-    MathStudio centres every clip on its bounding box; use this so that, for example, the
+    ManimUI centres every clip on its bounding box; use this so that, for example, the
     origin of a set of 3D axes stays exactly at the clip's position."""
     p = np.array(point, dtype=float)
     box = mob.get_bounding_box()
@@ -1361,7 +1361,7 @@ class Timeline:
                 c.error = f"{type(e).__name__}: {e}"
                 if "took longer than" in str(e):
                     c._fatal = c.error  # don't re-run an endless factory every frame
-                if os.environ.get("MATHSTUDIO_DEBUG"):
+                if os.environ.get("MANIMUI_DEBUG"):
                     traceback.print_exc()
                 continue
             mobs.extend(ms)
@@ -1371,7 +1371,7 @@ class Timeline:
 
 
 # --------------------------------------------------------------------------------------
-# Mobjects made from projects: a whole MathStudio timeline replayed inside one mobject
+# Mobjects made from projects: a whole ManimUI timeline replayed inside one mobject
 # --------------------------------------------------------------------------------------
 import weakref as _weakref
 
@@ -1384,7 +1384,7 @@ def project_mobject(build, t=0.0, duration=None, bbox=None, speed=1.0, loop=Fals
     `build()` returns the project's Timeline (built once and kept). After the end the last frame
     holds, or the timeline starts over with `loop`. `bbox` = (x0, y0, x1, y1): the area the
     project's content covers over its whole duration; it is padded with invisible points so the
-    mobject keeps a fixed size and centre while its parts move (MathStudio centres every clip on
+    mobject keeps a fixed size and centre while its parts move (ManimUI centres every clip on
     its bounding box). The project's camera and background are not part of the mobject.
     """
     tl = _PROJECT_TIMELINES.get(build)
@@ -1524,7 +1524,7 @@ class StudioScene(Scene):
     def __init__(self, **kwargs):
         cam = dict(kwargs.pop("camera_config", {}) or {})
         cam["background_color"] = self.background
-        fps = os.environ.get("MATHSTUDIO_FPS") or self.fps
+        fps = os.environ.get("MANIMUI_FPS") or self.fps
         if fps:
             cam["fps"] = int(fps)
         super().__init__(camera_config=cam, **kwargs)

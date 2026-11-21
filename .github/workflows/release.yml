@@ -91,8 +91,8 @@ jobs:
         with:
           name: linux-packages
           path: |
-            release/MathStudio-x86_64.AppImage
-            release/MathStudio-amd64.deb
+            release/ManimUI-x86_64.AppImage
+            release/ManimUI-amd64.deb
             release/latest-linux.yml
           retention-days: 3
           compression-level: 0
@@ -163,7 +163,7 @@ jobs:
           npx electron-builder --config packaging/windows/electron-builder.yml --win nsis --x64 --publish never \
             -c.extraMetadata.version=99.0.0 -c.directories.output=release-next >/dev/null
           ls -l release-next
-          MS_APP="$(cygpath -w "$LOCALAPPDATA/Programs/MathStudio/MathStudio.exe")" MS_NEXT=release-next MS_CUR=release \
+          MS_APP="$(cygpath -w "$LOCALAPPDATA/Programs/ManimUI/ManimUI.exe")" MS_NEXT=release-next MS_CUR=release \
             MS_OUT=release/test-out node tests/win_update.mjs
 
       - name: Keep test screenshots
@@ -181,8 +181,8 @@ jobs:
         with:
           name: windows-packages
           path: |
-            release/MathStudio-Setup.exe
-            release/MathStudio-Setup.exe.blockmap
+            release/ManimUI-Setup.exe
+            release/ManimUI-Setup.exe.blockmap
             release/latest.yml
           retention-days: 3
           compression-level: 0
@@ -206,5 +206,5 @@ jobs:
         run: |
           ls -l release
           scripts/release-upload.sh "$GITHUB_REF_NAME" \
-            release/MathStudio-x86_64.AppImage release/MathStudio-amd64.deb release/latest-linux.yml \
-            release/MathStudio-Setup.exe release/MathStudio-Setup.exe.blockmap release/latest.yml
+            release/ManimUI-x86_64.AppImage release/ManimUI-amd64.deb release/latest-linux.yml \
+            release/ManimUI-Setup.exe release/ManimUI-Setup.exe.blockmap release/latest.yml

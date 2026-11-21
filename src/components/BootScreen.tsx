@@ -29,7 +29,7 @@ export function BootScreen() {
       <div className="boot-glow" />
       <div className="boot-card loading">
         <SigmaMark drawing />
-        <div className="boot-word">MathStudio</div>
+        <div className="boot-word">ManimUI</div>
         <div className="boot-stage" key={stage}>{stage}</div>
         <div className="boot-bar"><i /></div>
       </div>
@@ -45,7 +45,7 @@ export function BootError({ error }: { error: string | null }) {
         <SigmaMark drawing={false} />
         <h2>The render engine could not start</h2>
         <pre>{error}</pre>
-        <p className="muted">Run <code>./setup.sh</code> in the project folder, then restart MathStudio.</p>
+        <p className="muted">Run <code>./setup.sh</code> in the project folder, then restart ManimUI.</p>
       </div>
     </div>
   );

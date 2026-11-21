@@ -17,7 +17,7 @@ const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails
 const near = (a, b, tol = 0.02) => Math.abs(a - b) <= tol;
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
-Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_STARTUP_PROJECTS: '0' });
+Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_STARTUP_PROJECTS: '0' });
 const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
 const win = await app.firstWindow();
 const errors = [];

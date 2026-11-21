@@ -14,7 +14,7 @@ ENGINE = os.path.dirname(HERE)
 sys.path.insert(0, ENGINE)
 TMP = tempfile.mkdtemp(prefix="mstest-pm-")
 sys.argv = [sys.argv[0], "--data", TMP]
-os.environ.pop("MATHSTUDIO_PLAN", None)
+os.environ.pop("MANIMUI_PLAN", None)
 
 import numpy as np  # noqa: E402
 import server  # noqa: E402
@@ -68,7 +68,7 @@ src = proj("Moving dot", [
 
 print("▸ animated mobject from a project")
 check(U.plan() == "free", "default plan is free")
-item = U.build(src, "Moving dot", visibility="private", mode="animated", source_path="/tmp/Moving dot.mstudio")
+item = U.build(src, "Moving dot", visibility="private", mode="animated", source_path="/tmp/Moving dot.manimui")
 library.sync_user()
 check(item["id"] in library.BY_ID and item["category"] == "My mobjects", f"registered as {item['id']}")
 check(item["visibility"] == "public", "free plan: asked for private, got public")
@@ -175,11 +175,11 @@ try:
     check(False, "free plan can't make a mobject private")
 except ValueError as e:
     check("Pro" in str(e), "free plan: private refused")
-os.environ["MATHSTUDIO_PLAN"] = "pro"
+os.environ["MANIMUI_PLAN"] = "pro"
 p = U.build(src, "Private dot", visibility="private")
 check(p["visibility"] == "private", "pro plan: private kept")
 check(U.update_meta(p["id"], visibility="public")["visibility"] == "public", "pro plan: can switch back to public")
-os.environ.pop("MATHSTUDIO_PLAN")
+os.environ.pop("MANIMUI_PLAN")
 check(U.update_meta(p["id"], name="Renamed")["name"] == "Renamed", "rename")
 
 print("▸ persistence + thumbnails")

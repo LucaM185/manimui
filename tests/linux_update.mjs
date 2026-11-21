@@ -1,7 +1,7 @@
 // A real AppImage updating itself to a newer real AppImage (run by packaging/linux/test-update.sh
 // inside the Linux test container, under Xvfb):
-//   MS_APP=/t/MathStudio-x86_64.AppImage MS_NEXT=/srv node tests/linux_update.mjs
-// MS_NEXT holds the newer MathStudio-x86_64.AppImage + its latest-linux.yml (Dockerfile artifacts-next).
+//   MS_APP=/t/ManimUI-x86_64.AppImage MS_NEXT=/srv node tests/linux_update.mjs
+// MS_NEXT holds the newer ManimUI-x86_64.AppImage + its latest-linux.yml (Dockerfile artifacts-next).
 // Serves them like GitHub would (single-range requests), checks the installed app sees the update,
 // downloads it differentially, restarts into it, and that the relaunched app is the new version.
 import { _electron as electron } from 'playwright';
@@ -37,7 +37,7 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const URL_ = `http://127.0.0.1:${server.address().port}`;
 
 // the "installed" AppImage lives in a folder the user can write to
-const APP = path.join(os.homedir(), 'Applications', 'MathStudio-x86_64.AppImage');
+const APP = path.join(os.homedir(), 'Applications', 'ManimUI-x86_64.AppImage');
 fs.mkdirSync(path.dirname(APP), { recursive: true });
 fs.copyFileSync(SRC, APP); fs.chmodSync(APP, 0o755);
 const before = sha(APP);
@@ -47,9 +47,9 @@ fs.writeFileSync(SETTINGS, JSON.stringify({ autoCheckUpdates: false }));
 const logs = [];
 const launch = async () => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'DEBUG' && !k.startsWith('OPENROUTER')));
-  Object.assign(env, { APPIMAGE_EXTRACT_AND_RUN: '1', MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'),
-    MATHSTUDIO_PROJECTS_DIR: path.join(TMP, 'P'), MATHSTUDIO_RECENTS: path.join(TMP, 'r.json'), MATHSTUDIO_SETTINGS: SETTINGS,
-    MATHSTUDIO_STARTUP_PROJECTS: '0', MATHSTUDIO_UPDATE_URL: URL_, HF_HUB_OFFLINE: '1', MATHSTUDIO_OFFLINE: '1' });
+  Object.assign(env, { APPIMAGE_EXTRACT_AND_RUN: '1', MANIMUI_NO_AUTOSAVE: '1', MANIMUI_DATA: path.join(TMP, 'data'),
+    MANIMUI_PROJECTS_DIR: path.join(TMP, 'P'), MANIMUI_RECENTS: path.join(TMP, 'r.json'), MANIMUI_SETTINGS: SETTINGS,
+    MANIMUI_STARTUP_PROJECTS: '0', MANIMUI_UPDATE_URL: URL_, HF_HUB_OFFLINE: '1', MANIMUI_OFFLINE: '1' });
   const app = await electron.launch({ executablePath: APP, env, timeout: 240000 });
   const grab = (d) => { for (const l of d.toString().split('\n')) if (/\[update\]/.test(l)) { logs.push(l); console.log('     ' + l.trim().slice(0, 220)); } };
   app.process().stdout?.on('data', grab); app.process().stderr?.on('data', grab);
@@ -75,26 +75,26 @@ try {
   await win.waitForFunction(() => ['downloading', 'ready'].includes(document.querySelector('[data-testid=update-status]')?.getAttribute('data-state')), null, { timeout: 60000 });
   check(true, `sees ${NEXT_VERSION} on the server and starts downloading (${el()})`);
   await waitState(win, 'ready', 900000);
-  const size = fs.statSync(path.join(NEXT, 'MathStudio-x86_64.AppImage')).size;
+  const size = fs.statSync(path.join(NEXT, 'ManimUI-x86_64.AppImage')).size;
   check(true, `downloaded (${el()}): ${(served / 1e6).toFixed(1)} MB transferred for a ${(size / 1e6).toFixed(0)} MB AppImage (${((100 * served) / size).toFixed(0)}%)`);
   await win.locator('[data-testid=settings-updates]').screenshot({ path: path.join(OUT, 'linux_update_ready.png') });
 
   const closed = new Promise((r) => app.on('close', r));
   await win.click('[data-testid=update-install]');
   check(await Promise.race([closed.then(() => true), new Promise((r) => setTimeout(() => r(false), 60000))]), 'old version quits on "Restart to update"');
-  check(sha(APP) === sha(path.join(NEXT, 'MathStudio-x86_64.AppImage')), 'AppImage replaced in place with the new one');
+  check(sha(APP) === sha(path.join(NEXT, 'ManimUI-x86_64.AppImage')), 'AppImage replaced in place with the new one');
   check(sha(APP) !== before, 'file content changed');
   // the updater starts the new version by itself
   let relaunched = false;
   for (let i = 0; i < 60 && !relaunched; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     const ps = execSync('ps -eo args', { encoding: 'utf8' });
-    relaunched = ps.split('\n').some((l) => /appimage_extracted|Applications\/MathStudio/.test(l) && !/ps -eo/.test(l));
+    relaunched = ps.split('\n').some((l) => /appimage_extracted|Applications\/ManimUI/.test(l) && !/ps -eo/.test(l));
   }
   check(relaunched, 'new version started automatically');
   // stop the relaunched copy before the next launch; "[a]..." so pkill doesn't also match (and
   // kill) the shell running this very command line
-  try { execSync('pkill -f "[a]ppimage_extracted"; pkill -f "[A]pplications/MathStudio"; true'); } catch { /* nothing left */ }
+  try { execSync('pkill -f "[a]ppimage_extracted"; pkill -f "[A]pplications/ManimUI"; true'); } catch { /* nothing left */ }
   await new Promise((r) => setTimeout(r, 3000));
 } catch (e) {
   check(false, `crashed: ${e.message}`);

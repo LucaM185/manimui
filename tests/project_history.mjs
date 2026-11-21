@@ -13,12 +13,12 @@ const HIST = path.join(TMP, 'state', 'project-history');
 const fails = []; const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails.push(m); };
 
 // a project with no versions yet, for the empty state
-fs.writeFileSync(path.join(DIR, 'Plain.mstudio'), JSON.stringify({ version: 1, settings: { name: 'Plain', duration: 4, fps: 30, background: '#1e1e1e', resolution: [1920, 1080] }, tracks: [{ id: 't1', name: 'Track 1' }], clips: [], assets: [] }));
+fs.writeFileSync(path.join(DIR, 'Plain.manimui'), JSON.stringify({ version: 1, settings: { name: 'Plain', duration: 4, fps: 30, background: '#1e1e1e', resolution: [1920, 1080] }, tracks: [{ id: 't1', name: 'Track 1' }], clips: [], assets: [] }));
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
 Object.assign(env, {
-  MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_STARTUP_PROJECTS: '0',
-  MATHSTUDIO_PROJECTS_DIR: DIR, MATHSTUDIO_RECENTS: RECENTS, MATHSTUDIO_TEST_CONFIRM: '0', MATHSTUDIO_TEST_TRASH_UNLINK: '1',
+  MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_STARTUP_PROJECTS: '0',
+  MANIMUI_PROJECTS_DIR: DIR, MANIMUI_RECENTS: RECENTS, MANIMUI_TEST_CONFIRM: '0', MANIMUI_TEST_TRASH_UNLINK: '1',
 });
 const errors = [];
 const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
@@ -51,7 +51,7 @@ await st(() => {
 });
 let t = await save();
 const P = await file();
-check(P === path.join(DIR, 'Alpha.mstudio'), `the project got its file (${P})`);
+check(P === path.join(DIR, 'Alpha.manimui'), `the project got its file (${P})`);
 check(/^Saved v1 · First version · 1 clip/.test(t), `toast names the version (${t})`);
 const hid = readJson(P).historyId;
 check(/^h[0-9a-z]+$/.test(hid || ''), `file carries a history id (${hid})`);
@@ -114,9 +114,9 @@ await win.fill('[data-testid=history-search]', '');
 // keyboard
 await win.keyboard.press('Escape');
 check(!!(await win.$('[data-testid=projects-grid]')) && !(await win.$('[data-testid=history-list]')), 'Esc goes back to the projects');
-await win.hover(`[data-testid=project-card][data-path$="/Plain.mstudio"]`);
+await win.hover(`[data-testid=project-card][data-path$="/Plain.manimui"]`);
 await win.click('.proj-toolbar', { position: { x: 900, y: 10 } }).catch(() => {});
-await win.hover(`[data-testid=project-card][data-path$="/Plain.mstudio"]`);
+await win.hover(`[data-testid=project-card][data-path$="/Plain.manimui"]`);
 await win.keyboard.press('h');
 check(await waitFor(async () => !!(await win.$('[data-testid=history-empty]'))), 'H opens history; a project without versions shows the empty state');
 await win.screenshot({ path: path.join(OUT, 'history-2-empty.png') });
@@ -153,9 +153,9 @@ await win.click('.ctx-menu >> text=/See history/');
 await win.waitForSelector('[data-testid=history-row][data-version="2"]');
 await win.hover('[data-testid=history-row][data-version="2"]');
 await win.click('[data-testid=history-row][data-version="2"] [data-testid=history-copy]');
-check(await waitFor(async () => (await file()) === path.join(DIR, 'Alpha v2.mstudio')), `copy opened (${await file()})`);
+check(await waitFor(async () => (await file()) === path.join(DIR, 'Alpha v2.manimui')), `copy opened (${await file()})`);
 check(await clipNames() === 'Ball,Box', `copy holds v2 (${await clipNames()})`);
-const hid2 = readJson(path.join(DIR, 'Alpha v2.mstudio')).historyId;
+const hid2 = readJson(path.join(DIR, 'Alpha v2.manimui')).historyId;
 check(hid2 && hid2 !== hid && log(hid2).length === 2, `copy has its own history with v1–v2 (${log(hid2).length})`);
 check(fs.existsSync(path.join(HIST, hid2, log(hid2)[1].id + '.gif')), 'forked versions keep their GIFs');
 

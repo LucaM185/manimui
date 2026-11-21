@@ -10,7 +10,7 @@ inside a single mobject, so it can be dropped into any other project, scaled, mo
 
 Each item is one JSON file in <engine data>/mobjects/<id>.json (a snapshot of the project at the
 time it was made; "Update" replaces it). Visibility is "public" or "private"; on the Free plan
-(MATHSTUDIO_PLAN, set by the Electron main process from the account) every mobject is public:
+(MANIMUI_PLAN, set by the Electron main process from the account) every mobject is public:
 `visibility_for` enforces that here, whatever the client asks for.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ ITEMS: list[dict] = []
 
 
 def plan() -> str:
-    return "pro" if (os.environ.get("MATHSTUDIO_PLAN") or "free").strip().lower() == "pro" else "free"
+    return "pro" if (os.environ.get("MANIMUI_PLAN") or "free").strip().lower() == "pro" else "free"
 
 
 def visibility_for(requested) -> str:
@@ -42,7 +42,7 @@ def visibility_for(requested) -> str:
 
 def author() -> str:
     try:
-        return os.environ.get("MATHSTUDIO_AUTHOR") or getpass.getuser()
+        return os.environ.get("MANIMUI_AUTHOR") or getpass.getuser()
     except Exception:  # noqa: BLE001
         return "me"
 
@@ -272,7 +272,7 @@ def update_meta(item_id: str, name=None, desc=None, visibility=None) -> dict:
         it["desc"] = str(desc).strip()
     if visibility is not None:
         if visibility == "private" and plan() != "pro":
-            raise ValueError("Private mobjects need MathStudio Pro. On the Free plan every mobject is public.")
+            raise ValueError("Private mobjects need ManimUI Pro. On the Free plan every mobject is public.")
         it["visibility"] = visibility_for(visibility)
         it["tags"] = [t for t in it.get("tags") or [] if t not in ("public", "private")] + [it["visibility"]]
     it["updated"] = time.time() * 1000

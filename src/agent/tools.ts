@@ -192,7 +192,7 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'set_import',
-      description: 'Edit an imported mobject (from the mathstudio library) that the project uses. Its definition sits once at the top of scene.py and every clip that uses it calls it, so editing it changes all of them. Pass the function name `fn` (from get_item) and the full new Python source. The source must still define `def <fn>():` and return a Mobject.',
+      description: 'Edit an imported mobject (from the ManimUI library) that the project uses. Its definition sits once at the top of scene.py and every clip that uses it calls it, so editing it changes all of them. Pass the function name `fn` (from get_item) and the full new Python source. The source must still define `def <fn>():` and return a Mobject.',
       parameters: {
         type: 'object',
         properties: { fn: { type: 'string', description: 'function name, e.g. imp_… from get_item' }, code: { type: 'string', description: 'full Python source of the definition' } },

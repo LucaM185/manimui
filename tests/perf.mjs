@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
-Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_DATA: process.env.MS_DATA || '' });
+Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_DATA: process.env.MS_DATA || '' });
 const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
 const win = await app.firstWindow();
 await win.waitForSelector('.lib-card', { timeout: 90000 });

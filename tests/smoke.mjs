@@ -2,7 +2,7 @@ import { _electron as electron } from 'playwright';
 const out = process.argv[2] || '/tmp';
 const app = await electron.launch({
   args: ['.'],
-  env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE')), MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_DATA: process.env.MS_DATA || '', MATHSTUDIO_HIDDEN: '' },
+  env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE')), MANIMUI_NO_AUTOSAVE: '1', MANIMUI_DATA: process.env.MS_DATA || '', MANIMUI_HIDDEN: '' },
 });
 const win = await app.firstWindow();
 win.on('console', (m) => { if (m.type() === 'error') console.log('console error:', m.text()); });

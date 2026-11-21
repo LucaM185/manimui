@@ -1,5 +1,5 @@
 """
-Convert ONE source file of the mathstudio library into a mobject definition, in a subprocess.
+Convert ONE source file of the ManimUI library into a mobject definition, in a subprocess.
 
     python import_runner.py <file.py> <fn_name>
 
@@ -37,7 +37,7 @@ REWRITES = [
 ]
 
 
-LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mathstudio_library")
+LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manimui_library")
 # roots a local import can resolve against (the 3b1b helper module lives in its video tree;
 # the manim plugins are packages inside their own folder)
 EXTRA_ROOTS = [

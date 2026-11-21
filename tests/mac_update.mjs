@@ -18,7 +18,7 @@ const t0 = Date.now(); const el = () => `${((Date.now() - t0) / 1000).toFixed(0)
 const ver = (dir) => /version:\s*(\S+)/.exec(fs.readFileSync(path.join(dir, 'latest-mac.yml'), 'utf8'))[1].replace(/['"]/g, '');
 const NEXT_VERSION = ver(NEXT); const CUR_VERSION = ver(CUR);
 const DIRS = { [NEXT_VERSION]: path.resolve(NEXT), [CUR_VERSION]: path.resolve(CUR) };
-const ZIP = 'MathStudio-arm64-mac.zip';
+const ZIP = 'ManimUI-arm64-mac.zip';
 
 let served = 0; const hits = [];
 const server = http.createServer((req, res) => {
@@ -45,8 +45,8 @@ const URL_ = `http://127.0.0.1:${server.address().port}/v${NEXT_VERSION}/`;
 // "install": unzip the current release's update zip, as a user dragging it to Applications would
 const APPS = path.join(TMP, 'Applications'); fs.mkdirSync(APPS);
 execFileSync('ditto', ['-x', '-k', path.join(CUR, ZIP), APPS]);
-const BUNDLE = path.join(APPS, 'MathStudio.app');
-const BIN = path.join(BUNDLE, 'Contents', 'MacOS', 'MathStudio');
+const BUNDLE = path.join(APPS, 'ManimUI.app');
+const BIN = path.join(BUNDLE, 'Contents', 'MacOS', 'ManimUI');
 const plistVersion = () => execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', path.join(BUNDLE, 'Contents', 'Info.plist')], { encoding: 'utf8' }).trim();
 const pids = () => { try { return execSync(`pgrep -f "${BIN}"`, { encoding: 'utf8' }).trim().split('\n').filter(Boolean); } catch { return []; } };
 const killAll = () => { for (const p of pids()) try { process.kill(+p, 'SIGTERM'); } catch { /* gone */ } };
@@ -57,9 +57,9 @@ fs.writeFileSync(SETTINGS, JSON.stringify({ autoCheckUpdates: false }));
 const logs = [];
 const launch = async () => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'DEBUG' && !k.startsWith('OPENROUTER')));
-  Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'),
-    MATHSTUDIO_PROJECTS_DIR: path.join(TMP, 'P'), MATHSTUDIO_RECENTS: path.join(TMP, 'r.json'), MATHSTUDIO_SETTINGS: SETTINGS,
-    MATHSTUDIO_STARTUP_PROJECTS: '0', MATHSTUDIO_UPDATE_URL: URL_, MATHSTUDIO_UPDATE_CACHE: 'mathstudio-updater-test', HF_HUB_OFFLINE: '1', MATHSTUDIO_OFFLINE: '1' });
+  Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_DATA: path.join(TMP, 'data'),
+    MANIMUI_PROJECTS_DIR: path.join(TMP, 'P'), MANIMUI_RECENTS: path.join(TMP, 'r.json'), MANIMUI_SETTINGS: SETTINGS,
+    MANIMUI_STARTUP_PROJECTS: '0', MANIMUI_UPDATE_URL: URL_, MANIMUI_UPDATE_CACHE: 'manimui-updater-test', HF_HUB_OFFLINE: '1', MANIMUI_OFFLINE: '1' });
   const app = await electron.launch({ executablePath: BIN, env, timeout: 240000 });
   const grab = (d) => { for (const l of d.toString().split('\n')) if (/\[update\]/.test(l)) { logs.push(l); console.log('     ' + l.trim().slice(0, 220)); } };
   app.process().stdout?.on('data', grab); app.process().stderr?.on('data', grab);
@@ -127,7 +127,7 @@ try {
 }
 server.close();
 killAll();
-fs.rmSync(path.join(os.homedir(), 'Library', 'Caches', 'mathstudio-updater-test'), { recursive: true, force: true });
+fs.rmSync(path.join(os.homedir(), 'Library', 'Caches', 'manimui-updater-test'), { recursive: true, force: true });
 if (fails.length) console.log('   requests:\n     ' + hits.slice(-30).join('\n     '));
 else fs.rmSync(TMP, { recursive: true, force: true });
 console.log(fails.length ? `\nMAC UPDATE: ${fails.length} FAILED\n - ${fails.join('\n - ')}` : '\nMAC UPDATE: ALL PASS');

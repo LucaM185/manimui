@@ -151,7 +151,7 @@ export default function App() {
         }, 600);
         // (switching projects isn't an edit: a background project schedules its own saves)
         if (s.sessionId === prev.sessionId && s.dirty && (s.project !== prev.project || !prev.dirty)) scheduleSave();
-        document.title = `${s.project.settings.name} — MathStudio`;
+        document.title = `${s.project.settings.name} — ManimUI`;
         window.studio.setTitle(document.title);
       }
     });

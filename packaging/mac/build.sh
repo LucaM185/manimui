@@ -1,16 +1,16 @@
 #!/bin/bash
-# Build MathStudio.app for macOS (Apple Silicon) with a bundled standalone Python holding ManimGL & co
+# Build ManimUI.app for macOS (Apple Silicon) with a bundled standalone Python holding ManimGL & co
 # (the same versions as engine/.venv), ffmpeg and the search model, signed with the Developer ID
 # certificate in the keychain.
-#   packaging/mac/build.sh             → release/mac-arm64/MathStudio.app
-#   packaging/mac/build.sh --install   … and move it to /Applications/MathStudio.app
+#   packaging/mac/build.sh             → release/mac-arm64/ManimUI.app
+#   packaging/mac/build.sh --install   … and move it to /Applications/ManimUI.app
 #   packaging/mac/build.sh --release   public build, notarized + stapled → release/mac/:
-#       MathStudio-arm64.dmg (download), MathStudio-arm64-mac.zip + .blockmap (in-app updates),
+#       ManimUI-arm64.dmg (download), ManimUI-arm64-mac.zip + .blockmap (in-app updates),
 #       latest-mac.yml (update feed). Upload with scripts/release-mac.sh.
 # LaTeX is not bundled: the app uses MacTeX from /Library/TeX/texbin if it is installed.
 # The non-commercial library content (gitignored) is included only for this machine's own install;
 # MS_PUBLIC=1 (implied by --release) leaves it out — required for anything that gets distributed.
-# Builds with that content are marked (package.json mathstudioLocalBuild) so the in-app updater
+# Builds with that content are marked (package.json manimuiLocalBuild) so the in-app updater
 # only points at the download page instead of replacing them with the public build.
 # Notarization uses a notarytool keychain profile (MS_NOTARY_PROFILE, default "feather"; create one
 # with `xcrun notarytool store-credentials <name>`): the Apple credentials stay in the keychain.
@@ -53,7 +53,7 @@ rm -rf "$STAGE/models/bge-small-en-v1.5/.cache"
 echo "▸ engine"
 EXCL=(--exclude .venv --exclude tests --exclude data --exclude videos --exclude imported_frames --exclude __pycache__ --exclude '*.pyc' --exclude .DS_Store)
 if [ "${MS_PUBLIC:-}" = 1 ]; then
-  EXCL+=(--exclude mathstudio_library/non-commercial --exclude mathstudio_library/manim-assets/manimgl/3b1b-videos --exclude mathstudio_imports_nc.json)
+  EXCL+=(--exclude manimui_library/non-commercial --exclude manimui_library/manim-assets/manimgl/3b1b-videos --exclude manimui_imports_nc.json)
 fi
 rsync -a "${EXCL[@]}" engine/ "$STAGE/engine/"
 
@@ -89,11 +89,11 @@ echo "▸ UI + app"
 npx vite build >/dev/null
 rm -rf release/mac-arm64
 EB_ARGS=()
-[ "${MS_PUBLIC:-}" = 1 ] || EB_ARGS+=(-c.extraMetadata.mathstudioLocalBuild=true)
+[ "${MS_PUBLIC:-}" = 1 ] || EB_ARGS+=(-c.extraMetadata.manimuiLocalBuild=true)
 [ -n "${MS_VERSION:-}" ] && EB_ARGS+=("-c.extraMetadata.version=$MS_VERSION")
 export CSC_NAME="${IDENTITY#Developer ID Application: }"
 npx electron-builder --config packaging/mac/electron-builder.yml --mac dir --arm64 --publish never ${EB_ARGS[@]+"${EB_ARGS[@]}"}
-APP="release/mac-arm64/MathStudio.app"
+APP="release/mac-arm64/ManimUI.app"
 codesign --verify --deep --strict "$APP" && echo "  signature ok: $(codesign -dvv "$APP" 2>&1 | grep '^Authority=' | head -1)"
 du -sh "$APP"
 
@@ -101,7 +101,7 @@ if [ "$MODE" = --release ]; then
   V="$(node -p "require('./package.json').version")"; V="${MS_VERSION:-$V}"
   # stapler can't write under ~/Desktop (TCC), where this repo may live: notarize, staple and
   # package in a temp folder, then copy the results back
-  WORK="$(mktemp -d "${TMPDIR:-/tmp}/mathstudio-release.XXXXXX")"
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/manimui-release.XXXXXX")"
   trap 'rm -rf "$WORK"' EXIT
   PROFILE="${MS_NOTARY_PROFILE:-feather}"
   notarize() {  # $1 = file to submit (.zip / .dmg)
@@ -124,20 +124,20 @@ if [ "$MODE" = --release ]; then
     done
   }
   echo "▸ notarizing the app"
-  ditto "$APP" "$WORK/MathStudio.app"
+  ditto "$APP" "$WORK/ManimUI.app"
   if [ "${MS_NOTARIZE:-1}" = 0 ]; then
     echo "  (skipped: MS_NOTARIZE=0 — not for distribution)"
   else
-    ditto -c -k --keepParent "$WORK/MathStudio.app" "$WORK/submit.zip"
+    ditto -c -k --keepParent "$WORK/ManimUI.app" "$WORK/submit.zip"
     notarize "$WORK/submit.zip"; rm "$WORK/submit.zip"
-    staple "$WORK/MathStudio.app"
-    spctl -a -t exec -vv "$WORK/MathStudio.app" 2>&1 | sed 's/^/  /'
+    staple "$WORK/ManimUI.app"
+    spctl -a -t exec -vv "$WORK/ManimUI.app" 2>&1 | sed 's/^/  /'
   fi
   echo "▸ dmg + zip"
   # --prepackaged: package the stapled app as is (electron-builder does not sign it again)
-  npx electron-builder --config packaging/mac/electron-builder.yml --prepackaged "$WORK/MathStudio.app" \
+  npx electron-builder --config packaging/mac/electron-builder.yml --prepackaged "$WORK/ManimUI.app" \
     --mac dmg zip --arm64 --publish never -c.directories.output="$WORK/out" "-c.extraMetadata.version=$V" >/dev/null
-  DMG="$WORK/out/MathStudio-arm64.dmg"
+  DMG="$WORK/out/ManimUI-arm64.dmg"
   if [ "${MS_NOTARIZE:-1}" != 0 ]; then
     echo "▸ notarizing the dmg"
     notarize "$DMG"
@@ -147,17 +147,17 @@ if [ "$MODE" = --release ]; then
   node packaging/mac/finish-latest.cjs "$WORK/out/latest-mac.yml" "$WORK/out"
   OUTDIR="${MS_MAC_OUT:-release/mac}"
   rm -rf "$OUTDIR" && mkdir -p "$OUTDIR"
-  cp "$DMG" "$WORK/out/MathStudio-arm64-mac.zip" "$WORK/out/MathStudio-arm64-mac.zip.blockmap" "$WORK/out/latest-mac.yml" "$OUTDIR/"
+  cp "$DMG" "$WORK/out/ManimUI-arm64-mac.zip" "$WORK/out/ManimUI-arm64-mac.zip.blockmap" "$WORK/out/latest-mac.yml" "$OUTDIR/"
   [ "${MS_NOTARIZE:-1}" = 0 ] && touch "$OUTDIR/NOT-NOTARIZED"
   ls -lh "$OUTDIR"
 fi
 
 if [ "$MODE" = "--install" ]; then
   echo "▸ installing to /Applications"
-  osascript -e 'tell application "MathStudio" to quit' >/dev/null 2>&1 || true
-  rm -rf /Applications/MathStudio.app
-  # move, not copy: a second MathStudio.app left in release/ is one more copy Launch Services
+  osascript -e 'tell application "ManimUI" to quit' >/dev/null 2>&1 || true
+  rm -rf /Applications/ManimUI.app
+  # move, not copy: a second ManimUI.app left in release/ is one more copy Launch Services
   # can pick for "Open With" / Spotlight (same volume → instant rename)
-  mv "$APP" /Applications/MathStudio.app 2>/dev/null || { ditto "$APP" /Applications/MathStudio.app && rm -rf "$APP"; }
-  echo "✓ /Applications/MathStudio.app"
+  mv "$APP" /Applications/ManimUI.app 2>/dev/null || { ditto "$APP" /Applications/ManimUI.app && rm -rf "$APP"; }
+  echo "✓ /Applications/ManimUI.app"
 fi

@@ -19,4 +19,4 @@ fi
 engine/.venv/bin/python -c "from huggingface_hub import snapshot_download as d; d('BAAI/bge-small-en-v1.5', allow_patterns=['onnx/model.onnx','tokenizer.json','config.json'])" || echo "(semantic search model not downloaded — will retry on first launch)"
 npm install
 npm run build
-echo "✓ Setup complete — run ./MathStudio.command (or npm start)"
+echo "✓ Setup complete — run ./ManimUI.command (or npm start)"

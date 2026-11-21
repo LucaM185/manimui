@@ -1,6 +1,6 @@
 // Settings → Agent provider: OpenRouter (default) or any OpenAI-compatible API with its own base URL,
 // key, model and model options. A local mock server plays both the custom provider and OpenRouter
-// (MATHSTUDIO_OPENROUTER_URL), so the real ai:chat proxy runs end to end: free and deterministic.
+// (MANIMUI_OPENROUTER_URL), so the real ai:chat proxy runs end to end: free and deterministic.
 //   npm run test:aiprovider
 import { _electron as electron } from 'playwright';
 import fs from 'fs';
@@ -73,10 +73,10 @@ const BASE = `http://127.0.0.1:${PORT}/v1`;
 // ------------------------------------------------------------------ app
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && !k.startsWith('OPENROUTER')));
 Object.assign(env, {
-  MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_TEST_CONFIRM: '0',
-  MATHSTUDIO_CHECKPOINTS: path.join(TMP, 'checkpoints'), MATHSTUDIO_CHATS: path.join(TMP, 'chats'), MATHSTUDIO_PROJECTS_DIR: path.join(TMP, 'P'),
-  MATHSTUDIO_RECENTS: path.join(TMP, 'recents.json'), MATHSTUDIO_STARTUP_PROJECTS: '0', MATHSTUDIO_SETTINGS: SETTINGS,
-  MATHSTUDIO_OPENROUTER_URL: `http://127.0.0.1:${PORT}/or/v1`,
+  MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_TEST_CONFIRM: '0',
+  MANIMUI_CHECKPOINTS: path.join(TMP, 'checkpoints'), MANIMUI_CHATS: path.join(TMP, 'chats'), MANIMUI_PROJECTS_DIR: path.join(TMP, 'P'),
+  MANIMUI_RECENTS: path.join(TMP, 'recents.json'), MANIMUI_STARTUP_PROJECTS: '0', MANIMUI_SETTINGS: SETTINGS,
+  MANIMUI_OPENROUTER_URL: `http://127.0.0.1:${PORT}/or/v1`,
 });
 const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
 if (process.env.MS_DEBUG) { app.process().stderr.on('data', (d) => process.stderr.write(d)); app.process().stdout.on('data', (d) => process.stdout.write(d)); }
@@ -262,7 +262,7 @@ try {
   check(orq.length === 1 && orq[0].path.startsWith('/or/'), 'call went to OpenRouter');
   if (orq[0]) {
     const o = orq[0];
-    check(o.body.model === 'openai/gpt-5-mini' && o.auth === `Bearer ${OR_KEY}` && o.title === 'MathStudio', 'OpenRouter model, key, X-Title');
+    check(o.body.model === 'openai/gpt-5-mini' && o.auth === `Bearer ${OR_KEY}` && o.title === 'ManimUI', 'OpenRouter model, key, X-Title');
     check(o.body.reasoning?.effort === 'high' && o.body.usage?.include === true, 'OpenRouter reasoning + usage fields');
     check(o.body.max_tokens >= 120000, `agent's large output cap kept by default (${o.body.max_tokens})`);
     check(JSON.stringify(o.body).includes('cache_control'), 'prompt-cache breakpoints kept for OpenRouter');

@@ -1,10 +1,10 @@
-# macOS Apple Silicon build (MathStudio.app). Run via packaging/mac/build.sh, which stages the
+# macOS Apple Silicon build (ManimUI.app). Run via packaging/mac/build.sh, which stages the
 # Python bundle in build-res-mac/ first. Signed with the Developer ID certificate found in the
 # keychain (electron-builder picks it automatically), so macOS privacy grants (Documents folder…)
 # stay attached to the app across rebuilds.
-appId: app.mathstudio.ide
-productName: MathStudio
-copyright: MathStudio
+appId: app.manimui.ide
+productName: ManimUI
+copyright: ManimUI
 directories:
   output: release
   buildResources: packaging
@@ -38,12 +38,12 @@ mac:
   signIgnore:
     - /Contents/Resources/(python|engine|models)/
   # release files (build.sh --release): versionless, so the website can link to
-  # github.com/<owner>/<repo>/releases/latest/download/MathStudio-arm64.dmg
+  # github.com/<owner>/<repo>/releases/latest/download/ManimUI-arm64.dmg
   artifactName: ${productName}-${arch}-mac.${ext}
   extendInfo:
-    NSDocumentsFolderUsageDescription: MathStudio saves your projects in Documents/MathStudio.
-    NSDesktopFolderUsageDescription: MathStudio opens and saves projects and exports you keep on the Desktop.
-    NSDownloadsFolderUsageDescription: MathStudio opens and saves projects and exports you keep in Downloads.
+    NSDocumentsFolderUsageDescription: ManimUI saves your projects in Documents/ManimUI.
+    NSDesktopFolderUsageDescription: ManimUI opens and saves projects and exports you keep on the Desktop.
+    NSDownloadsFolderUsageDescription: ManimUI opens and saves projects and exports you keep in Downloads.
 dmg:
   artifactName: ${productName}-${arch}.${ext}
   sign: true

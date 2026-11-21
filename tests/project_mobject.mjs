@@ -9,11 +9,11 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-pm-'));
 const DIR = path.join(TMP, 'Projects'); fs.mkdirSync(DIR);
 const fails = []; const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails.push(m); };
 
-const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'MATHSTUDIO_PLAN'));
+const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'MANIMUI_PLAN'));
 Object.assign(baseEnv, {
-  MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_STARTUP_PROJECTS: '0',
-  MATHSTUDIO_PROJECTS_DIR: DIR, MATHSTUDIO_RECENTS: path.join(TMP, 'state', 'recent-projects.json'), MATHSTUDIO_TEST_CONFIRM: '0',
-  MATHSTUDIO_TEST_SAVE_PATH: path.join(DIR, 'Pythagoras.mstudio'),
+  MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_STARTUP_PROJECTS: '0',
+  MANIMUI_PROJECTS_DIR: DIR, MANIMUI_RECENTS: path.join(TMP, 'state', 'recent-projects.json'), MANIMUI_TEST_CONFIRM: '0',
+  MANIMUI_TEST_SAVE_PATH: path.join(DIR, 'Pythagoras.manimui'),
 });
 
 async function launch(extra = {}) {
@@ -26,7 +26,7 @@ async function launch(extra = {}) {
   const menu = (cmd) => app.evaluate(({ BrowserWindow }, c) => BrowserWindow.getAllWindows()[0].webContents.send('menu', c), cmd);
   return { app, win, errors, menu };
 }
-const cardSel = (name) => `[data-testid=project-card][data-path$="/${name}.mstudio"]`;
+const cardSel = (name) => `[data-testid=project-card][data-path$="/${name}.manimui"]`;
 const userCards = (win) => win.$$eval('.library section', (secs) => {
   const s = secs.find((x) => x.querySelector('h4')?.textContent.includes('My mobjects'));
   return s ? [...s.querySelectorAll('.lib-card')].map((c) => ({ id: c.dataset.item, text: c.textContent, vis: c.querySelector('[data-testid=mobject-visibility]')?.className || '', img: !!c.querySelector('img') })) : null;
@@ -116,7 +116,7 @@ await app.close();
 
 // ───────────────────────────────────────────── Pro plan, same data dir
 console.log('▸ pro plan');
-({ app, win, errors, menu } = await launch({ MATHSTUDIO_PLAN: 'pro' }));
+({ app, win, errors, menu } = await launch({ MANIMUI_PLAN: 'pro' }));
 uc = await userCards(win);
 check(uc && uc.length === 2, `mobjects persist across launches (${uc?.length})`);
 await win.waitForFunction(() => document.querySelectorAll('.library .lib-card img').length > 3, null, { timeout: 30000 }).catch(() => {});

@@ -16,11 +16,11 @@ set -euo pipefail
 TAG="${1:?usage: release-upload.sh vX.Y.Z [file…] | --create [platforms] | --publish}"; shift
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "✗ not a release tag: $TAG"; exit 2; }
 V="${TAG#v}"
-MARK='mathstudio-platforms:'
+MARK='manimui-platforms:'
 
 exists() { gh release view "$TAG" --json tagName >/dev/null 2>&1; }
 create() {  # $1 = platforms
-  gh release create "$TAG" --draft --verify-tag --title "MathStudio $V" --generate-notes \
+  gh release create "$TAG" --draft --verify-tag --title "ManimUI $V" --generate-notes \
     --notes "<!-- $MARK $1 -->" >/dev/null
   echo "✓ draft release $TAG created (expects: $1)"
 }

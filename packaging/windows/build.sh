@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build MathStudio for Windows x64 → release/MathStudio-Setup.exe (+ .blockmap) + release/latest.yml
+# Build ManimUI for Windows x64 → release/ManimUI-Setup.exe (+ .blockmap) + release/latest.yml
 # (update info; all three are uploaded to the GitHub Release by CI).
 # Runs ON Windows, in Git Bash: GitHub's windows-latest runner (.github/workflows/release.yml).
 # Needs Node 20 (npm ci done), uv, curl, 7z. Bundles a standalone Python 3.12 with the engine's
@@ -57,8 +57,8 @@ echo "▸ engine"
 # the non-commercial library content is gitignored, so a CI checkout never has it; excluded anyway
 tar -cf - --exclude=.venv --exclude=tests --exclude=data --exclude=videos --exclude=imported_frames \
   --exclude=__pycache__ --exclude='*.pyc' --exclude=.DS_Store \
-  --exclude=mathstudio_library/non-commercial --exclude=mathstudio_library/manim-assets/manimgl/3b1b-videos \
-  --exclude=mathstudio_imports_nc.json engine | tar -xf - -C "$STAGE"
+  --exclude=manimui_library/non-commercial --exclude=manimui_library/manim-assets/manimgl/3b1b-videos \
+  --exclude=manimui_imports_nc.json engine | tar -xf - -C "$STAGE"
 
 echo "▸ trimming + precompiling"
 rm -rf "$STAGE"/python/Lib/{test,idlelib,ensurepip} "$STAGE/python/include" "$STAGE/python/libs"
@@ -69,7 +69,7 @@ find "$STAGE/python" -name '*.pyc' -delete
 "$PY" -c "import sys; sys.path.insert(0, r'$(cygpath -w "$STAGE/engine")'); import manimlib, manimpango, moderngl, onnxruntime, tokenizers, numpy, scipy, PIL, code_knobs, search; print('  imports ok')"
 
 # Windows' classic 260-character path limit: the install prefix
-# (C:\Users\<name>\AppData\Local\Programs\MathStudio\resources\) takes ~70-90 of them
+# (C:\Users\<name>\AppData\Local\Programs\ManimUI\resources\) takes ~70-90 of them
 # (no `| head` anywhere here: with pipefail, the writer's SIGPIPE fails the script)
 LONGEST=$(cd "$STAGE" && find . -type f | awk '{ l = length($0) - 2; if (l > m) m = l } END { print m + 0 }')
 echo "  longest path inside resources: $LONGEST chars"
@@ -81,7 +81,7 @@ echo "  $(find "$STAGE" -type f | wc -l) files, $(du -sh "$STAGE" | cut -f1)"
 
 echo "▸ UI + installer"
 npx vite build >/dev/null
-rm -rf release/win-unpacked release/MathStudio-Setup.exe*
+rm -rf release/win-unpacked release/ManimUI-Setup.exe*
 npx electron-builder --config packaging/windows/electron-builder.yml --win nsis --x64 --publish never "$@"
-ls -l release/MathStudio-Setup.exe release/MathStudio-Setup.exe.blockmap release/latest.yml
+ls -l release/ManimUI-Setup.exe release/ManimUI-Setup.exe.blockmap release/latest.yml
 cat release/latest.yml

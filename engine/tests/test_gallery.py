@@ -1,5 +1,5 @@
 """
-Gallery mobjects: every gallery picture of the mathstudio library is a ManimGL class, not an image.
+Gallery mobjects: every gallery picture of the ManimUI library is a ManimGL class, not an image.
 
     engine/.venv/bin/python engine/tests/test_gallery.py
 

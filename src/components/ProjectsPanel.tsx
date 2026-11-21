@@ -86,7 +86,7 @@ export default function ProjectsPanel() {
     reloadTrash();
   }, [reloadTrash]);
 
-  // Deleting is always undoable: the file moves to the MathStudio Trash (restorable for a month).
+  // Deleting is always undoable: the file moves to the ManimUI Trash (restorable for a month).
   const moveToTrash = async (e: ProjectEntry) => {
     const openSid = sessionForPath(e.path);
     if (openSid) await flushSave(false, openSid);
@@ -173,7 +173,7 @@ export default function ProjectsPanel() {
     let out = list.filter((p) => (!likedOnly || p.favorite) && (!needle || `${p.title || ''} ${p.name} ${p.path}`.toLowerCase().includes(needle)));
     if (sort === 'name') out = [...out].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
     else if (sort === 'modified') out = [...out].sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0));
-    // recent: opened in MathStudio (newest first), then the rest of the projects folder by date
+    // recent: opened in ManimUI (newest first), then the rest of the projects folder by date
     else out = [...out].sort((a, b) => (b.opened || 0) - (a.opened || 0) || (b.mtime ?? 0) - (a.mtime ?? 0));
     // liked projects next (stable: keeps the chosen order inside each group); the open one first
     out = [...out.filter((p) => p.favorite), ...out.filter((p) => !p.favorite)];
@@ -458,7 +458,7 @@ export default function ProjectsPanel() {
             <>
             {cards.some((e) => e !== CURRENT && (e as ProjectEntry).blocked) && (
               <div className="proj-blocked" data-testid="projects-blocked">
-                <span>macOS is blocking MathStudio from reading some project files. Allow access under <b>Privacy &amp; Security → Files &amp; Folders</b>, then reopen this panel.</span>
+                <span>macOS is blocking ManimUI from reading some project files. Allow access under <b>Privacy &amp; Security → Files &amp; Folders</b>, then reopen this panel.</span>
                 <button className="btn" onClick={() => window.studio.openPrivacySettings()}>Open System Settings</button>
               </div>
             )}

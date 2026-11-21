@@ -41,7 +41,7 @@ echo "✓ checks passed"
 npm version "$BUMP" -m "Release %s"     # bumps, commits, tags vX.Y.Z
 git push --follow-tags
 V=$(node -p "require('./package.json').version")
-echo "✓ pushed v$V — Linux + Windows build/test: https://github.com/LucaM185/mathstudio/actions"
+echo "✓ pushed v$V — Linux + Windows build/test: https://github.com/LucaM185/manimui/actions"
 # the draft exists before CI's upload (≥ 1 h from now), so the two never race to create it
 if [ "$MAC" = 1 ]; then scripts/release-upload.sh "v$V" --create "linux windows mac"
 else scripts/release-upload.sh "v$V" --create "linux windows"; fi

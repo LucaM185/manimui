@@ -1,13 +1,13 @@
 {
-  "name": "mathstudio",
-  "productName": "MathStudio",
+  "name": "manimui",
+  "productName": "ManimUI",
   "version": "0.2.0",
   "description": "A visual IDE for ManimGL animations",
   "repository": {
     "type": "git",
-    "url": "https://github.com/LucaM185/mathstudio.git"
+    "url": "https://github.com/LucaM185/manimui.git"
   },
-  "author": "MathStudio",
+  "author": "ManimUI",
   "license": "AGPL-3.0-only",
   "main": "electron/main.cjs",
   "private": true,

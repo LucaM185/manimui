@@ -1,4 +1,4 @@
-# MathStudio — a visual IDE for ManimGL
+# ManimUI — a visual IDE for ManimGL
 
 Drag mobjects onto a live preview, arrange them on a video-editor timeline, and export with
 `manimgl`. Everything you do is turned into a real ManimGL script, which you can see and
@@ -6,22 +6,22 @@ edit.
 
 ## Download
 
-* **Windows** (x64): [MathStudio-Setup.exe](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-Setup.exe)
+* **Windows** (x64): [ManimUI-Setup.exe](https://github.com/LucaM185/manimui/releases/latest/download/ManimUI-Setup.exe)
   — installs for your user, no admin rights. It isn't code-signed yet, so SmartScreen may say
   "Windows protected your PC": *More info → Run anyway*.
-* **Mac** (Apple Silicon): [MathStudio-arm64.dmg](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-arm64.dmg)
+* **Mac** (Apple Silicon): [ManimUI-arm64.dmg](https://github.com/LucaM185/manimui/releases/latest/download/ManimUI-arm64.dmg)
   — signed and notarized; drag it to Applications.
-* **Linux** (x86_64): [AppImage](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-x86_64.AppImage)
-  · [.deb](https://github.com/LucaM185/mathstudio/releases/latest/download/MathStudio-amd64.deb)
+* **Linux** (x86_64): [AppImage](https://github.com/LucaM185/manimui/releases/latest/download/ManimUI-x86_64.AppImage)
+  · [.deb](https://github.com/LucaM185/manimui/releases/latest/download/ManimUI-amd64.deb)
 
-[All releases](https://github.com/LucaM185/mathstudio/releases). Windows, Mac and AppImage installs
+[All releases](https://github.com/LucaM185/manimui/releases). Windows, Mac and AppImage installs
 update themselves (Settings → Updates); the .deb tells you when a new version is out.
 
 ## Run from source
 
 ```bash
 ./setup.sh              # once: Python venv with manimgl, npm install, build
-./MathStudio.command    # or: npm start
+./ManimUI.command    # or: npm start
 ```
 
 Requirements: macOS, Node 18+, Python 3.10+ (uv is used if available), ffmpeg, and a LaTeX install
@@ -36,7 +36,7 @@ for `Tex` mobjects.
 
 * **OpenRouter API key** for the AI agent: paste it, *Test* checks it against OpenRouter (free).
   Stored owner-only in `settings.json` in the app's user-data folder
-  (`~/Library/Application Support/MathStudio`, `~/.config/MathStudio` on Linux). A key typed there
+  (`~/Library/Application Support/ManimUI`, `~/.config/ManimUI` on Linux). A key typed there
   wins over `OPENROUTER_KEY` in the environment or a `.env` file.
 * **Preview quality**: Auto / High / Balanced / Low cap the live preview resolution
   (1920 → 960 px). The panel shows which OpenGL renderer the engine got; Auto picks Low on a
@@ -46,7 +46,7 @@ for `Tex` mobjects.
 ## Linux build (x86_64)
 
 ```bash
-npm run dist:linux   # → release/MathStudio-x86_64.AppImage, release/MathStudio-amd64.deb, release/latest-linux.yml
+npm run dist:linux   # → release/ManimUI-x86_64.AppImage, release/ManimUI-amd64.deb, release/latest-linux.yml
 npm run test:linux   # installs the .deb in a clean Ubuntu 24.04 container and drives the real app
 npm run test:linux-update  # the built AppImage updates itself to a newer build (after test:linux)
 ```
@@ -57,15 +57,15 @@ model, so nothing has to be installed on the target except OpenGL (any desktop h
 not bundled: `Tex`/Equation mobjects need `sudo apt install texlive-latex-extra texlive-science dvisvgm`
 (the app says so if it's missing). The developer `.env` is never packaged.
 
-* `.deb`: `sudo apt install ./MathStudio-amd64.deb`, then start *MathStudio* from the menu.
-* AppImage: `chmod +x MathStudio-x86_64.AppImage && ./MathStudio-x86_64.AppImage` (needs `libfuse2`, or run
+* `.deb`: `sudo apt install ./ManimUI-amd64.deb`, then start *ManimUI* from the menu.
+* AppImage: `chmod +x ManimUI-x86_64.AppImage && ./ManimUI-x86_64.AppImage` (needs `libfuse2`, or run
   with `--appimage-extract-and-run`). It runs with Chromium's sandbox off, because AppImages can't
   ship the setuid helper and Ubuntu 24.04 blocks the namespace sandbox for them.
 
 ## Windows build (x64)
 
 ```bash
-npm run dist:win   # on Windows (Git Bash): → release/MathStudio-Setup.exe (+ .blockmap), release/latest.yml
+npm run dist:win   # on Windows (Git Bash): → release/ManimUI-Setup.exe (+ .blockmap), release/latest.yml
 npm run test:win   # installs it silently and drives the installed app
 ```
 
@@ -73,7 +73,7 @@ Built and tested on GitHub's `windows-latest` runner by the release workflow (th
 route like Linux's). Same bundle as Linux — Python 3.12 with the pinned engine packages
 (`packaging/linux/constraints.txt`), static ffmpeg, the search model — plus the VC++ runtime DLLs
 and Mesa's software OpenGL (llvmpipe): when a PC has no OpenGL 3.3 driver (VMs, remote desktop)
-the engine says so and is restarted on Mesa automatically (`MATHSTUDIO_SOFTWARE_GL=1` forces it).
+the engine says so and is restarted on Mesa automatically (`MANIMUI_SOFTWARE_GL=1` forces it).
 The runners have no GPU, so CI exercises exactly that path. LaTeX: install MiKTeX. Not code-signed
 (no certificate), so the installer shows SmartScreen's unknown-publisher warning.
 
@@ -106,8 +106,8 @@ Electron + React UI ──HTTP──► engine/server.py (ManimGL, OpenGL offscr
 
 * **Library** (left): ~45 pre-made mobjects with animated previews on hover. Drag them onto the
   preview (sets position) or the timeline (sets time + track). Drop images/SVGs from Finder.
-* **Mathstudio library** (second tab of the Library): every file of `engine/mathstudio_library/`
-  (copied from `mathstudio library/`), indexed by `engine/library_imported.py`. Files under
+* **ManimUI library** (second tab of the Library): every file of `engine/manimui_library/`,
+  indexed by `engine/library_imported.py`. Files under
   `non-commercial/` and `manim-assets/manimgl/3b1b-videos/` are CC BY-NC-SA 4.0 (non-commercial only)
   and are drawn with a red overlay labelled NON-COMMERCIAL. Images and SVGs can be double-clicked to add
   them to the project; Python modules and videos are reference material (double-click copies the path).
@@ -124,7 +124,7 @@ Electron + React UI ──HTTP──► engine/server.py (ManimGL, OpenGL offscr
   ManimGL project* writes `scene.py` + `studio_runtime.py` + assets so you can keep going by hand.
 
 * **AI Agent**: before every message the project is committed to a private git repo
-  (`~/Library/Application Support/mathstudio/checkpoints`). The ↺ button next to a message restores
+  (`~/Library/Application Support/ManimUI/checkpoints`). The ↺ button next to a message restores
   the project to that commit and rewinds the chat (the message goes back in the input; ⌘Z undoes
   the restore). `git log -p` there shows every turn as `Before:` / `Agent:` commits.
 
@@ -200,11 +200,11 @@ npm run test:settings # Settings popup (gear icon): API key save/test/remove, pr
 
 ## License
 
-MathStudio is free software, released under the [GNU Affero General Public License v3.0](LICENSE)
+ManimUI is free software, released under the [GNU Affero General Public License v3.0](LICENSE)
 (AGPL-3.0-only). You can use, study, change and share it. If you distribute a modified version, or
 run one as a service that people use over a network, you must publish its source code under the
 same license.
 
 Bundled third-party code and assets keep their own licenses: ManimGL and the example scenes under
-`engine/mathstudio_library/manim-assets/` are MIT-licensed. Content under non-commercial licenses
+`engine/manimui_library/manim-assets/` are MIT-licensed. Content under non-commercial licenses
 (CC BY-NC-SA) is not part of this repository or its releases.

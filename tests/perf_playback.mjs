@@ -1,7 +1,7 @@
 // Playback performance in the real app: loads a project, plays it at a preview quality and reports
 // the preview frame rate, engine vs round-trip time per frame, UI main-thread stalls and the
 // engine's memory before/after. Also guards the GL leak: engine memory must stay flat.
-//   node tests/perf_playback.mjs [project.mstudio] [--quality low|balanced|high] [--seconds 8]
+//   node tests/perf_playback.mjs [project.manimui] [--quality low|balanced|high] [--seconds 8]
 //   npm run test:perf   (uses a generated scene when no project is given)
 import { _electron as electron } from 'playwright';
 import fs from 'fs';
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
-const projectPath = args.find((a) => a.endsWith('.mstudio'));
+const projectPath = args.find((a) => a.endsWith('.manimui'));
 const QUALITY = opt('--quality', 'low');
 const SECONDS = Number(opt('--seconds', '8'));
 const MIN_FPS = Number(opt('--min-fps', '0'));
@@ -24,8 +24,8 @@ const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
 fs.writeFileSync(path.join(TMP, 'settings.json'), JSON.stringify({ quality: QUALITY }));
 Object.assign(env, {
-  MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_STARTUP_PROJECTS: '0',
-  MATHSTUDIO_SETTINGS: path.join(TMP, 'settings.json'), MATHSTUDIO_NO_SEMANTIC: '1',
+  MANIMUI_NO_AUTOSAVE: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_STARTUP_PROJECTS: '0',
+  MANIMUI_SETTINGS: path.join(TMP, 'settings.json'), MANIMUI_NO_SEMANTIC: '1',
 });
 const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
 const win = await app.firstWindow();

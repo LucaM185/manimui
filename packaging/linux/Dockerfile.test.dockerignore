@@ -12,6 +12,6 @@ engine/videos
 engine/imported_frames
 **/__pycache__
 tests/out
-*.mstudio
+*.manimui
 release*/test-out
 release*-next

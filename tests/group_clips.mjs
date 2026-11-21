@@ -16,7 +16,7 @@ const fails = [];
 const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails.push(m); };
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
-Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_STARTUP_PROJECTS: '0' });
+Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_STARTUP_PROJECTS: '0' });
 const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
 const win = await app.firstWindow();
 const errors = [];
@@ -78,7 +78,7 @@ await S(([base, impId]) => {
     p.settings.duration = 16;
     p.tracks = ['A', 'B', 'C', 'D', 'E', 'F'].map((n) => ({ id: 't' + n, name: 'Track ' + n }));
     p.clips = [
-      { ...base, id: 'txt', name: 'Text 3', item: 'text', track: 'tA', start: 9, duration: 6.5, params: { ...params('text'), text: 'Mathstudio 2026' },
+      { ...base, id: 'txt', name: 'Text 3', item: 'text', track: 'tA', start: 9, duration: 6.5, params: { ...params('text'), text: 'ManimUI 2026' },
         transform: { ...base.transform, x: 1.6, y: 1.2, rotation: -6 }, enter: { type: 'Write', duration: 1.5, rate: 'smooth' }, exit: { type: 'FadeOut', duration: 0.6, rate: 'smooth' } },
       { ...base, id: 'dot', name: 'Dot 4', item: 'dot', track: 'tB', start: 9, duration: 6.5, params: params('dot'),
         transform: { ...base.transform, x: -0.9, y: 1.2 }, enter: { type: 'GrowFromCenter', duration: 1, rate: 'smooth' }, exit: { type: 'FadeOut', duration: 0.6, rate: 'smooth' } },

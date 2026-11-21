@@ -23,7 +23,7 @@ import numpy as np
 import library
 from library_meta import CATEGORY_DESC, META
 
-MODEL_REPO = os.environ.get("MATHSTUDIO_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
+MODEL_REPO = os.environ.get("MANIMUI_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 SEM_FLOOR = 0.60
 QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 _WORD = re.compile(r"[a-z0-9]+")
@@ -146,7 +146,7 @@ class Searcher:
         try:
             return snapshot_download(MODEL_REPO, allow_patterns=pats, local_files_only=True)
         except Exception:
-            if os.environ.get("MATHSTUDIO_OFFLINE"):
+            if os.environ.get("MANIMUI_OFFLINE"):
                 raise
             self.status = "downloading"
             return snapshot_download(MODEL_REPO, allow_patterns=pats)

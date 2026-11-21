@@ -1,6 +1,6 @@
 // Self-update status, mirrored from the main process (electron/main.cjs "updates"). Installs that
 // can update themselves download a new version in the background and then show one toast,
-// "MathStudio x is ready · Restart" (it also installs on the next quit). Others get "x is available ·
+// "ManimUI x is ready · Restart" (it also installs on the next quit). Others get "x is available ·
 // Download", which opens the releases page. Either way there is a dot on the top-bar Settings icon.
 import { create } from 'zustand';
 import { useStore } from './store';
@@ -17,9 +17,9 @@ function apply(s: UpdateStatus) {
   const once = (key: string) => !toasted.has(key) && !!toasted.add(key);
   const api = window.studio.updates;
   if (s.state === 'ready' && once(`ready ${s.version}`)) {
-    useStore.getState().toast(`MathStudio ${s.version} is ready`, 'info', { label: 'Restart', run: () => { api?.install(); } });
+    useStore.getState().toast(`ManimUI ${s.version} is ready`, 'info', { label: 'Restart', run: () => { api?.install(); } });
   } else if (s.state === 'available' && s.mode === 'notify' && once(`available ${s.version}`)) {
-    useStore.getState().toast(`MathStudio ${s.version} is available`, 'info', { label: 'Download', run: () => { api?.openPage(); } });
+    useStore.getState().toast(`ManimUI ${s.version} is available`, 'info', { label: 'Download', run: () => { api?.openPage(); } });
   }
 }
 

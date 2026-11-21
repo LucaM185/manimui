@@ -3,20 +3,20 @@
 // 1. from source: no updater, "git pull" hint
 // 2. notify mode (.deb / Mac): up to date → new version with notes + "Open download page" → server
 //    error → readable message; "Last checked"; auto-check toggle persists
-// 3. background check, notify mode: toast "MathStudio x is available · Download" (opens the
+// 3. background check, notify mode: toast "ManimUI x is available · Download" (opens the
 //    releases page) + dot on the Settings tab
 // 4. install mode (AppImage, faked with $APPIMAGE): "Check" downloads right away; a corrupted
 //    download is refused (sha512), then a real one with progress → "Restart to update" → the file is
 //    replaced and the new one launched
 // 5. install mode in the background: a failed download falls back quietly to "Download"; a good one
-//    ends in a single toast "MathStudio x is ready · Restart" → the file is replaced
+//    ends in a single toast "ManimUI x is ready · Restart" → the file is replaced
 import { _electron as electron } from 'playwright';
 import crypto from 'crypto'; import fs from 'fs'; import http from 'http'; import os from 'os'; import path from 'path';
 import { fileURLToPath } from 'url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = process.env.MS_OUT || path.join(ROOT, 'tests', 'out'); fs.mkdirSync(OUT, { recursive: true });
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-updates-'));
-const CACHE = `mathstudio-updater-test-${process.pid}`;
+const CACHE = `manimui-updater-test-${process.pid}`;
 const CACHE_DIR = path.join(process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Caches') : (process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache')), CACHE);
 const CURRENT = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 const fails = []; const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails.push(m); };
@@ -40,17 +40,17 @@ const server = http.createServer(async (req, res) => {
     return res.end([
       `version: ${release.version}`,
       'files:',
-      '  - url: MathStudio-x86_64.AppImage',
+      '  - url: ManimUI-x86_64.AppImage',
       `    sha512: ${sha}`,
       `    size: ${NEW_APP.length}`,
-      'path: MathStudio-x86_64.AppImage',
+      'path: ManimUI-x86_64.AppImage',
       `sha512: ${sha}`,
       "releaseDate: '2026-11-12T12:00:00.000Z'",
       `releaseNotes: '${(release.notes || '').replace(/'/g, "''")}'`,
       '',
     ].join('\n'));
   }
-  if (u.endsWith('/MathStudio-x86_64.AppImage')) {
+  if (u.endsWith('/ManimUI-x86_64.AppImage')) {
     res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': NEW_APP.length });
     // slow enough (~4 s) for progress events: electron-updater sends at most one per second
     for (let i = 0; i < NEW_APP.length; i += 128 * 1024) {
@@ -66,10 +66,10 @@ const URL_ = `http://127.0.0.1:${server.address().port}/releases`;
 
 const SETTINGS = path.join(TMP, 'settings.json');
 const launch = async (extra = {}) => {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && !k.startsWith('OPENROUTER') && !k.startsWith('MATHSTUDIO_UPDATE') && k !== 'APPIMAGE'));
-  Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'),
-    MATHSTUDIO_PROJECTS_DIR: path.join(TMP, 'P'), MATHSTUDIO_RECENTS: path.join(TMP, 'r.json'), MATHSTUDIO_SETTINGS: SETTINGS,
-    MATHSTUDIO_STARTUP_PROJECTS: '0', MATHSTUDIO_UPDATE_CACHE: CACHE }, extra);
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && !k.startsWith('OPENROUTER') && !k.startsWith('MANIMUI_UPDATE') && k !== 'APPIMAGE'));
+  Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'),
+    MANIMUI_PROJECTS_DIR: path.join(TMP, 'P'), MANIMUI_RECENTS: path.join(TMP, 'r.json'), MANIMUI_SETTINGS: SETTINGS,
+    MANIMUI_STARTUP_PROJECTS: '0', MANIMUI_UPDATE_CACHE: CACHE }, extra);
   const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
   const win = await app.firstWindow();
   win.on('pageerror', (e) => console.log('   pageerror:', e.message));
@@ -102,7 +102,7 @@ try {
   console.log('2. notify mode (.deb / Mac)');
   fs.writeFileSync(SETTINGS, JSON.stringify({ autoCheckUpdates: false }));
   {
-    const { app, win } = await launch({ MATHSTUDIO_UPDATE_URL: URL_ });
+    const { app, win } = await launch({ MANIMUI_UPDATE_URL: URL_ });
     await openSettings(win);
     release = { version: CURRENT };
     await win.click('[data-testid=update-check]');
@@ -115,7 +115,7 @@ try {
     await win.click('[data-testid=update-check]');
     await waitState(win, 'available');
     const notes = await win.textContent('[data-testid=update-notes]');
-    check(/9\.1\.0 is available/.test(await win.textContent('[data-testid=update-status]')), 'newer version → "MathStudio 9.1.0 is available"');
+    check(/9\.1\.0 is available/.test(await win.textContent('[data-testid=update-status]')), 'newer version → "ManimUI 9.1.0 is available"');
     check(notes.includes('• Faster previews') && notes.includes('Fix & polish') && !notes.includes('<'), `release notes as plain text (${JSON.stringify(notes.slice(0, 60))})`);
     check(await win.isVisible('[data-testid=update-open-page]'), 'notify mode → "Open download page"');
     check(!(await win.isVisible('[data-testid=update-download]')), 'notify mode → no "Download update"');
@@ -140,10 +140,10 @@ try {
   console.log('3. background check at launch (notify mode)');
   {
     release = { version: '9.2.0', notes: 'Background' };
-    const { app, win } = await launch({ MATHSTUDIO_UPDATE_URL: URL_, MATHSTUDIO_UPDATE_DELAY_MS: '1500' });
+    const { app, win } = await launch({ MANIMUI_UPDATE_URL: URL_, MANIMUI_UPDATE_DELAY_MS: '1500' });
     await stubOpenExternal(app);
-    await win.waitForFunction(() => /MathStudio 9\.2\.0 is available/.test(document.body.innerText), null, { timeout: 30000 });
-    check(true, 'toast "MathStudio 9.2.0 is available"');
+    await win.waitForFunction(() => /ManimUI 9\.2\.0 is available/.test(document.body.innerText), null, { timeout: 30000 });
+    check(true, 'toast "ManimUI 9.2.0 is available"');
     check(await win.isVisible('[data-testid=update-dot]'), 'dot on the Settings icon');
     await win.click('.toast >> text=Download');
     const opened = await waitOpened(app);
@@ -158,11 +158,11 @@ try {
   // ---------------------------------------------------------------- 4. install mode (AppImage)
   console.log('4. install mode (AppImage)');
   fs.writeFileSync(SETTINGS, JSON.stringify({ autoCheckUpdates: false }));
-  const OLD = path.join(TMP, 'Apps', 'MathStudio-x86_64.AppImage');
+  const OLD = path.join(TMP, 'Apps', 'ManimUI-x86_64.AppImage');
   fs.mkdirSync(path.dirname(OLD), { recursive: true });
   fs.writeFileSync(OLD, '#!/bin/sh\necho old\n', { mode: 0o755 });
   {
-    const { app, win } = await launch({ MATHSTUDIO_UPDATE_URL: URL_, MATHSTUDIO_UPDATE_MODE: 'install', APPIMAGE: OLD, MATHSTUDIO_UPDATE_NO_DIFF: '1' });
+    const { app, win } = await launch({ MANIMUI_UPDATE_URL: URL_, MANIMUI_UPDATE_MODE: 'install', APPIMAGE: OLD, MANIMUI_UPDATE_NO_DIFF: '1' });
     await openSettings(win);
 
     release = { version: '9.3.0', notes: 'Corrupt', sha: sha512(Buffer.from('something else')) };
@@ -181,7 +181,7 @@ try {
     check(moved, 'percentage goes up during the download');
     await shot(win, 'downloading');
     await waitState(win, 'ready', 60000);
-    check(/9\.3\.0 is ready/.test(await win.textContent('[data-testid=update-status]')), '"MathStudio 9.3.0 is ready to install"');
+    check(/9\.3\.0 is ready/.test(await win.textContent('[data-testid=update-status]')), '"ManimUI 9.3.0 is ready to install"');
     check(await win.isVisible('[data-testid=update-install]'), '"Restart to update" button');
     await shot(win, 'ready');
 
@@ -201,7 +201,7 @@ try {
   fs.writeFileSync(OLD, '#!/bin/sh\necho old\n', { mode: 0o755 });
   fs.rmSync(MARK, { force: true });
   fs.rmSync(CACHE_DIR, { recursive: true, force: true });
-  const bgEnv = { MATHSTUDIO_UPDATE_URL: URL_, MATHSTUDIO_UPDATE_MODE: 'install', APPIMAGE: OLD, MATHSTUDIO_UPDATE_NO_DIFF: '1', MATHSTUDIO_UPDATE_DELAY_MS: '1500' };
+  const bgEnv = { MANIMUI_UPDATE_URL: URL_, MANIMUI_UPDATE_MODE: 'install', APPIMAGE: OLD, MANIMUI_UPDATE_NO_DIFF: '1', MANIMUI_UPDATE_DELAY_MS: '1500' };
   {
     // a background download that fails: no error, no toast, Settings offers "Download"
     release = { version: '9.4.0', notes: 'Corrupt', sha: sha512(Buffer.from('something else')) };
@@ -226,8 +226,8 @@ try {
     const { app, win } = await launch(bgEnv);
     const seen = await trackStates(win, (st) => st === 'ready');
     check(seen.includes('downloading'), `downloaded in the background (${seen.join(' → ')})`);
-    await win.waitForFunction(() => /MathStudio 9\.5\.0 is ready/.test(document.querySelector('.toasts')?.textContent || ''), null, { timeout: 5000 });
-    check(true, 'toast "MathStudio 9.5.0 is ready"');
+    await win.waitForFunction(() => /ManimUI 9\.5\.0 is ready/.test(document.querySelector('.toasts')?.textContent || ''), null, { timeout: 5000 });
+    check(true, 'toast "ManimUI 9.5.0 is ready"');
     check(!/is available/.test(await win.textContent('.toasts')), 'no separate "available" toast');
     check((await win.locator('.toasts .toast').count()) === 1, 'exactly one toast');
     check(await win.isVisible('[data-testid=update-dot]'), 'dot on the Settings icon');

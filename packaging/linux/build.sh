@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build MathStudio for Linux x86_64 → release/MathStudio-x86_64.AppImage + release/MathStudio-amd64.deb
+# Build ManimUI for Linux x86_64 → release/ManimUI-x86_64.AppImage + release/ManimUI-amd64.deb
 # + release/latest-linux.yml (update info; all three are uploaded to a GitHub Release by CI).
 # Needs Docker (works on Apple Silicon through emulation; the first build takes a while).
 #   packaging/linux/build.sh          build
@@ -11,5 +11,5 @@ REL="${MS_RELEASE:-release}"
 mkdir -p "$REL"
 # shellcheck disable=SC2086
 docker buildx build --platform linux/amd64 -f packaging/linux/Dockerfile --target artifacts ${MS_BUILDX_ARGS:-} --output "type=local,dest=$REL" .
-ls -lh "$REL"/MathStudio-x86_64.AppImage "$REL"/MathStudio-amd64.deb "$REL"/latest-linux.yml
+ls -lh "$REL"/ManimUI-x86_64.AppImage "$REL"/ManimUI-amd64.deb "$REL"/latest-linux.yml
 if [ "${1:-}" = "--test" ]; then packaging/linux/test.sh; fi

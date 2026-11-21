@@ -1,4 +1,4 @@
-// Gallery check in the real app: the mathstudio library's gallery cards are ManimGL classes with
+// Gallery check in the real app: the ManimUI library's gallery cards are ManimGL classes with
 // rendered thumbnails (not pictures), and the animated ones play on hover.
 //   node tests/gallery_ui.mjs        (screenshots go to tests/out/gallery-*.png)
 import { _electron as electron } from 'playwright';
@@ -12,7 +12,7 @@ const OUT = process.env.E2E_OUT || path.join(ROOT, 'tests', 'out');
 fs.mkdirSync(OUT, { recursive: true });
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-gallery-'));
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
-Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_DATA: path.join(TMP, 'data') });
+Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_DATA: path.join(TMP, 'data') });
 
 const fails = [];
 const check = (cond, msg) => { if (!cond) fails.push(msg); console.log(cond ? '   ✓' : '   ✗', msg); };

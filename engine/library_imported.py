@@ -1,10 +1,10 @@
 """
-The second library: the files of the copied mathstudio library (engine/mathstudio_library/).
+The second library: the files of the copied ManimUI library (engine/manimui_library/).
 
 Two steps:
 
 1. `scan()` lists every file and its licence. Used by import_convert.py.
-2. import_convert.py turns each file into a mobject definition and writes mathstudio_imports.json.
+2. import_convert.py turns each file into a mobject definition and writes manimui_imports.json.
    `library_items()` turns the accepted ones into ordinary library items (category "Imported"),
    so they get the same previews, hover animation and search as the built-in elements.
 
@@ -16,8 +16,8 @@ Licences come from the tree a file lives in (SOURCE.txt / LICENSE files):
 * `element-gallery/`: hand-written Manim scenes, no third-party licence file: treated as own work.
 
 The non-commercial trees are not in the public repository or the release builds (.gitignore,
-.dockerignore). import_convert.py therefore writes two files: mathstudio_imports.json (public:
-MIT + own work) and mathstudio_imports_nc.json (the `nc` records, kept out of git); a checkout
+.dockerignore). import_convert.py therefore writes two files: manimui_imports.json (public:
+MIT + own work) and manimui_imports_nc.json (the `nc` records, kept out of git); a checkout
 without the second one simply has no non-commercial items.
 
 Gallery pictures are not library items. `non-commercial/gallery/images/X.png` and
@@ -35,9 +35,9 @@ import os
 import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LIB_DIR = os.path.join(HERE, "mathstudio_library")
-CONVERTED = os.path.join(HERE, "mathstudio_imports.json")
-CONVERTED_NC = os.path.join(HERE, "mathstudio_imports_nc.json")  # optional, not in git
+LIB_DIR = os.path.join(HERE, "manimui_library")
+CONVERTED = os.path.join(HERE, "manimui_imports.json")
+CONVERTED_NC = os.path.join(HERE, "manimui_imports_nc.json")  # optional, not in git
 
 SKIP_DIRS = {".git", "__pycache__", ".venv"}
 SKIP_NAMES = {".DS_Store", ".gitignore"}

@@ -60,11 +60,11 @@ function installMock({ ipcMain }) {
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
 Object.assign(env, {
-  MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_TEST_CONFIRM: '0',
-  MATHSTUDIO_CHECKPOINTS: path.join(TMP, 'checkpoints'), MATHSTUDIO_CHATS: path.join(TMP, 'chats'), MATHSTUDIO_PROJECTS_DIR: path.join(TMP, 'projects'),
-  MATHSTUDIO_RECENTS: path.join(TMP, 'recents.json'), MATHSTUDIO_STARTUP_PROJECTS: '0',
+  MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_TEST_CONFIRM: '0',
+  MANIMUI_CHECKPOINTS: path.join(TMP, 'checkpoints'), MANIMUI_CHATS: path.join(TMP, 'chats'), MANIMUI_PROJECTS_DIR: path.join(TMP, 'projects'),
+  MANIMUI_RECENTS: path.join(TMP, 'recents.json'), MANIMUI_STARTUP_PROJECTS: '0',
 });
-fs.mkdirSync(env.MATHSTUDIO_PROJECTS_DIR, { recursive: true });
+fs.mkdirSync(env.MANIMUI_PROJECTS_DIR, { recursive: true });
 const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
 await app.evaluate(installMock);
 const win = await app.firstWindow();

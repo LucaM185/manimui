@@ -407,7 +407,7 @@ return VGroup(Circle(radius=1.8, stroke_color=GREY_C, stroke_width=2), dots)""")
 
 BY_ID = {it["id"]: it for it in ITEMS}
 
-# The second library (mathstudio library): every converted file is a library item too, so a
+# The second library (ManimUI library): every converted file is a library item too, so a
 # clip can use it by id. They are kept out of ITEMS (the built-in list and built-in search).
 import library_imported as _imported  # noqa: E402
 

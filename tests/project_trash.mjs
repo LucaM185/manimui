@@ -1,4 +1,4 @@
-// MathStudio Trash: deleting a project moves it to <state>/project-trash (Undo toast, restorable for
+// ManimUI Trash: deleting a project moves it to <state>/project-trash (Undo toast, restorable for
 // 30 days, likes + thumbnail kept); "Delete now" / "Empty Trash" / expiry hand it to the system Trash.
 //   node tests/project_trash.mjs
 import { _electron as electron } from 'playwright';
@@ -16,7 +16,7 @@ const THUMBS = path.join(STATE, 'project-thumbs'); fs.mkdirSync(THUMBS);
 const fails = []; const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails.push(m); };
 
 const mini = (name, extra = {}) => ({ version: 1, settings: { name, duration: 6, fps: 30, background: '#1e1e1e', resolution: [1920, 1080] }, tracks: [{ id: 't1', name: 'Track 1' }], clips: [], assets: [], ...extra });
-const P = (n, d = DIR) => path.join(d, `${n}.mstudio`);
+const P = (n, d = DIR) => path.join(d, `${n}.manimui`);
 ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo'].forEach((n, i) => { fs.writeFileSync(P(n), JSON.stringify(mini(n, { marker: n }))); const t = (Date.now() - (i + 1) * 60e3) / 1000; fs.utimesSync(P(n), t, t); });
 fs.writeFileSync(P('Outside', OTHER), JSON.stringify(mini('Outside')));
 fs.writeFileSync(RECENTS, JSON.stringify([{ path: P('Outside', OTHER), opened: Date.now() - 3600e3 }]));
@@ -27,8 +27,8 @@ fs.writeFileSync(thumbOf(P('Alpha')), JSON.stringify({ mtime: fs.statSync(P('Alp
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
 Object.assign(env, {
-  MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_STARTUP_PROJECTS: '0',
-  MATHSTUDIO_PROJECTS_DIR: DIR, MATHSTUDIO_RECENTS: RECENTS, MATHSTUDIO_TEST_CONFIRM: '0', MATHSTUDIO_TEST_TRASH_UNLINK: '1',
+  MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_STARTUP_PROJECTS: '0',
+  MANIMUI_PROJECTS_DIR: DIR, MANIMUI_RECENTS: RECENTS, MANIMUI_TEST_CONFIRM: '0', MANIMUI_TEST_TRASH_UNLINK: '1',
 });
 const errors = [];
 const launch = async () => {
@@ -42,11 +42,11 @@ const launch = async () => {
 let { app, win } = await launch();
 const names = () => win.$$eval('[data-testid=project-card][data-path]', (els) => els.map((e) => e.querySelector('.proj-name').textContent));
 const tnames = () => win.$$eval('[data-testid=trash-card]', (els) => els.map((e) => e.querySelector('.proj-name').textContent));
-const cardSel = (n) => `[data-testid=project-card][data-path$="/${n}.mstudio"]`;
+const cardSel = (n) => `[data-testid=project-card][data-path$="/${n}.manimui"]`;
 const tcard = (n) => `[data-testid=trash-card]:has(.proj-name:text-is("${n}"))`;
 const slots = () => { try { return fs.readdirSync(TRASH).filter((d) => !d.startsWith('.')); } catch (e) { return []; } };
-const inTrash = (n) => slots().some((id) => fs.existsSync(path.join(TRASH, id, `${n}.mstudio`)));
-const favs = () => JSON.parse(fs.readFileSync(path.join(STATE, 'favorite-projects.json'), 'utf8')).map((p) => path.basename(p, '.mstudio'));
+const inTrash = (n) => slots().some((id) => fs.existsSync(path.join(TRASH, id, `${n}.manimui`)));
+const favs = () => JSON.parse(fs.readFileSync(path.join(STATE, 'favorite-projects.json'), 'utf8')).map((p) => path.basename(p, '.manimui'));
 const openPopup = async () => { await win.click('[data-testid=tb-projects]'); await win.waitForSelector('[data-testid=project-card][data-path]'); };
 const trashBtn = () => win.textContent('[data-testid=projects-trash]');
 const confirms = () => app.evaluate(() => (global.__msConfirms || []).length);
@@ -57,10 +57,10 @@ check((await trashBtn()).trim() === 'Trash', `Trash button, empty (${await trash
 const c0 = await confirms();
 await win.click(cardSel('Alpha'), { button: 'right' });
 await win.click('.ctx-item:has-text("Move to Trash")');
-await win.waitForFunction(() => !document.querySelector('[data-path$="/Alpha.mstudio"]'), null, { timeout: 4000 }).catch(() => {});
+await win.waitForFunction(() => !document.querySelector('[data-path$="/Alpha.manimui"]'), null, { timeout: 4000 }).catch(() => {});
 check(await confirms() === c0, 'no confirmation needed (it can be undone)');
-check(!fs.existsSync(P('Alpha')) && inTrash('Alpha'), 'file moved into the MathStudio Trash, not erased');
-check(JSON.parse(fs.readFileSync(path.join(TRASH, slots()[0], 'Alpha.mstudio'), 'utf8')).marker === 'Alpha', 'contents intact in the Trash');
+check(!fs.existsSync(P('Alpha')) && inTrash('Alpha'), 'file moved into the ManimUI Trash, not erased');
+check(JSON.parse(fs.readFileSync(path.join(TRASH, slots()[0], 'Alpha.manimui'), 'utf8')).marker === 'Alpha', 'contents intact in the Trash');
 check(fs.existsSync(path.join(TRASH, slots()[0], 'thumb.json')) && !fs.existsSync(thumbOf(P('Alpha'))), 'thumbnail travels with it');
 check(!favs().includes('Alpha'), 'like parked with it');
 check((await trashBtn()).includes('1'), `Trash button counts it (${(await trashBtn()).trim()})`);
@@ -76,14 +76,14 @@ console.log('▸ ⌘⌫ deletes the highlighted card (never the open project)');
 await win.click('.proj-scroll', { position: { x: 5, y: 5 } }).catch(() => {});
 await win.hover(cardSel('Bravo'));
 await win.keyboard.press('Meta+Backspace');
-await win.waitForFunction(() => !document.querySelector('[data-path$="/Bravo.mstudio"]'), null, { timeout: 4000 }).catch(() => {});
+await win.waitForFunction(() => !document.querySelector('[data-path$="/Bravo.manimui"]'), null, { timeout: 4000 }).catch(() => {});
 check(!fs.existsSync(P('Bravo')) && inTrash('Bravo'), '⌘⌫ moved Bravo to the Trash');
 await win.focus('[data-testid=projects-search]');
 await win.keyboard.type('xy'); await win.keyboard.press('Meta+Backspace');
 check(fs.existsSync(P('Charlie')) && fs.existsSync(P('Delta')), '⌘⌫ inside the search field only edits the text');
 await win.fill('[data-testid=projects-search]', '');
 await win.click(cardSel('Charlie')); // switch → Charlie is the open project
-await win.waitForFunction(() => window.__ms.store.getState().filePath?.endsWith('/Charlie.mstudio'), null, { timeout: 5000 });
+await win.waitForFunction(() => window.__ms.store.getState().filePath?.endsWith('/Charlie.manimui'), null, { timeout: 5000 });
 await openPopup();
 await win.hover(cardSel('Charlie'));
 await win.keyboard.press('Meta+Backspace');
@@ -153,7 +153,7 @@ await app.close();
 // age Outside past 30 days, Bravo to 28 days
 for (const id of slots()) {
   const m = path.join(TRASH, id, 'meta.json'); const j = JSON.parse(fs.readFileSync(m, 'utf8'));
-  j.deletedAt = Date.now() - (fs.existsSync(path.join(TRASH, id, 'Outside.mstudio')) ? 31 : 28.5) * 86400e3;
+  j.deletedAt = Date.now() - (fs.existsSync(path.join(TRASH, id, 'Outside.manimui')) ? 31 : 28.5) * 86400e3;
   fs.writeFileSync(m, JSON.stringify(j));
 }
 ({ app, win } = await launch());

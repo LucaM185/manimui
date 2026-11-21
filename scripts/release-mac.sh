@@ -17,6 +17,6 @@ git ls-remote --exit-code --tags origin "$TAG" >/dev/null || { echo "✗ $TAG is
 
 packaging/mac/build.sh --release
 [ ! -e release/mac/NOT-NOTARIZED ] || { echo "✗ release/mac is not notarized (MS_NOTARIZE=0): not uploading it"; exit 1; }
-xcrun stapler validate -q release/mac/MathStudio-arm64.dmg || { echo "✗ the dmg has no notarization ticket"; exit 1; }
-scripts/release-upload.sh "$TAG" release/mac/MathStudio-arm64.dmg release/mac/MathStudio-arm64-mac.zip \
-  release/mac/MathStudio-arm64-mac.zip.blockmap release/mac/latest-mac.yml
+xcrun stapler validate -q release/mac/ManimUI-arm64.dmg || { echo "✗ the dmg has no notarization ticket"; exit 1; }
+scripts/release-upload.sh "$TAG" release/mac/ManimUI-arm64.dmg release/mac/ManimUI-arm64-mac.zip \
+  release/mac/ManimUI-arm64-mac.zip.blockmap release/mac/latest-mac.yml

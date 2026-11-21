@@ -220,14 +220,14 @@ export function seedStrip(recent: { path: string; title?: string; exists: boolea
   const files: StripState['files'] = {};
   const thumbs: Record<string, string> = { ...useStrip.getState().thumbs };
   for (const r of recent) {
-    files[r.path] = { title: r.title || r.path.split('/').pop()!.replace(/\.mstudio$/i, ''), exists: r.exists, background: r.background };
+    files[r.path] = { title: r.title || r.path.split('/').pop()!.replace(/\.manimui$/i, ''), exists: r.exists, background: r.background };
     if (r.thumb && !thumbs[r.path]) thumbs[r.path] = r.thumb;
   }
   useStrip.setState({ files, thumbs });
   // drop files that no longer exist
   let order = useStrip.getState().order.filter((id) => isSid(id) || files[id]?.exists !== false);
   if (order.length < MAX_STRIP) {
-    // only projects actually opened in MathStudio, most recent first (not every file in the folder)
+    // only projects actually opened in ManimUI, most recent first (not every file in the folder)
     for (const r of [...recent].filter((r) => r.opened).sort((a, b) => (b.opened || 0) - (a.opened || 0))) {
       if (order.length >= MAX_STRIP) break;
       if (!r.exists || dismissed.has(r.path) || order.includes(r.path) || sessionForPath(r.path)) continue;

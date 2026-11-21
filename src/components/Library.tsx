@@ -271,7 +271,7 @@ function Card({ item, active, related }: { item: LibraryItem; active?: boolean; 
   );
 }
 
-/** Keyword filter for the mathstudio library (the engine's semantic index covers built-ins only). */
+/** Keyword filter for the ManimUI library (the engine's semantic index covers built-ins only). */
 function importedMatch(it: LibraryItem, q: string) {
   const hay = `${it.name} ${it.desc || ''} ${it.rel || ''} ${it.source || ''} ${it.source_name || ''} ${it.author || ''} ${(it.tags || []).join(' ')}`.toLowerCase();
   return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
@@ -313,7 +313,7 @@ export default function Library() {
   const query = q.trim();
   const searching = query.length > 0;
 
-  // One pool: built-in categories first, then the mathstudio library grouped by source.
+  // One pool: built-in categories first, then the ManimUI library grouped by source.
   const groups = useMemo(() => {
     const out: { id: string; title: string; cat?: string; items: LibraryItem[] }[] = [];
     const idx = new Map<string, LibraryItem[]>();
@@ -336,7 +336,7 @@ export default function Library() {
 
   // Ranked search results.  Engine results (semantic + keyword) for built-ins when they are
   // for the current query; an instant local keyword filter while typing / if the engine
-  // fails.  Mathstudio-library matches follow in the same grid.
+  // fails.  ManimUI-library matches follow in the same grid.
   const results = useMemo(() => {
     if (!searching) return null;
     const byId = new Map(library.items.map((it) => [it.id, it]));

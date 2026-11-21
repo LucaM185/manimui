@@ -1,9 +1,9 @@
 """
-Batch-convert every file of the mathstudio library into a mobject definition.
+Batch-convert every file of the ManimUI library into a mobject definition.
 
     cd engine && .venv/bin/python import_convert.py
 
-Writes mathstudio_imports.json next to this file: one record per library file with
+Writes manimui_imports.json next to this file: one record per library file with
   status "ok"    -> `code` is a top-level definition `def <fn>(): return <Mobject>` (validated)
   status "fail"  -> `error` says why (not a mobject source, does not run under manimgl, ...)
 

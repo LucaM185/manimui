@@ -1,5 +1,5 @@
 """
-MathStudio render server.
+ManimUI render server.
 
 HTTP API (localhost only).  All OpenGL work happens on the main thread; HTTP handlers
 run in worker threads and hand jobs over through a priority queue.
@@ -690,7 +690,7 @@ def run_job(renderer, job):
             return (prio, count, _STEP, (gen,), fut)
         fut.set_result(res)
     except Exception as e:
-        if os.environ.get("MATHSTUDIO_DEBUG"):
+        if os.environ.get("MANIMUI_DEBUG"):
             traceback.print_exc()
         log("job failed:", type(e).__name__, e)
         fut.set_exception(e)
@@ -792,9 +792,9 @@ def write_export_dir(project, out_dir):
     with open(os.path.join(out_dir, "scene.py"), "w") as f:
         f.write(code)
     shutil.copy(os.path.join(HERE, "studio_runtime.py"), os.path.join(out_dir, "studio_runtime.py"))
-    # imported mobjects may read files of the mathstudio library (pi creature SVGs...) relative to
+    # imported mobjects may read files of the ManimUI library (pi creature SVGs...) relative to
     # studio_runtime.py: link the library next to the copied runtime
-    lib, link = os.path.join(HERE, "mathstudio_library"), os.path.join(out_dir, "mathstudio_library")
+    lib, link = os.path.join(HERE, "manimui_library"), os.path.join(out_dir, "manimui_library")
     if os.path.isdir(lib) and not os.path.lexists(link):
         try:
             if os.name == "nt":
@@ -839,7 +839,7 @@ def start_export(body):
     env = dict(os.environ)
     env["PYTHONPATH"] = work + os.pathsep + env.get("PYTHONPATH", "")
     env["PYTHONUNBUFFERED"] = "1"
-    env["MATHSTUDIO_FPS"] = str(fps)
+    env["MANIMUI_FPS"] = str(fps)
     proc = subprocess.Popen(cmd, cwd=work, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, bufsize=0)
     job["proc"] = proc
     EXPORTS[job_id] = job
@@ -1172,7 +1172,7 @@ class Handler(BaseHTTPRequestHandler):
 
 PARTS_CACHE: dict = {}
 
-JOB_TIMEOUT = float(os.environ.get("MATHSTUDIO_JOB_TIMEOUT", "20"))
+JOB_TIMEOUT = float(os.environ.get("MANIMUI_JOB_TIMEOUT", "20"))
 
 
 class JobTimeout(Exception):
@@ -1185,14 +1185,14 @@ class _Watchdog:
 
     POSIX: SIGALRM (setitimer). Windows has neither, so a watcher thread injects the exception with
     PyThreadState_SetAsyncExc instead; like the signal, it lands at the next Python bytecode (a long
-    C call such as a big numpy op finishes first). MATHSTUDIO_WATCHDOG=thread forces that path."""
+    C call such as a big numpy op finishes first). MANIMUI_WATCHDOG=thread forces that path."""
 
     limit = JOB_TIMEOUT
 
     def __init__(self, seconds):
         import signal
         self.seconds = _Watchdog.limit = seconds
-        self.use_signal = hasattr(signal, "setitimer") and os.environ.get("MATHSTUDIO_WATCHDOG") != "thread"
+        self.use_signal = hasattr(signal, "setitimer") and os.environ.get("MANIMUI_WATCHDOG") != "thread"
         if self.use_signal:
             signal.signal(signal.SIGALRM, self._raise)
         else:
@@ -1270,13 +1270,13 @@ def main():
         for it in library.ITEMS:
             if not it.get("hidden"):
                 submit(10, lambda r, i=it["id"]: make_thumb(r, i))
-        # the mathstudio library too: renders once, then comes from disk on every launch
+        # the ManimUI library too: renders once, then comes from disk on every launch
         for it in library.IMPORTED:
             submit(11, lambda r, i=it["id"]: make_thumb(r, i))
         for it in library.user.ITEMS:
             submit(10, lambda r, i=it["id"]: make_thumb(r, i))
     warm()
-    if not os.environ.get("MATHSTUDIO_NO_SEMANTIC"):
+    if not os.environ.get("MANIMUI_NO_SEMANTIC"):
         # load the embedding model once the first thumbnails are out of the way (or on first search)
         search.get(DATA_DIR).start(delay=4.0)
     print(f"READY {port}", flush=True)

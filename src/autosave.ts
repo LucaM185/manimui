@@ -1,6 +1,6 @@
 // Projects save themselves: shortly after every change an open project is written to its file —
 // the one on screen and any other open project an agent is editing in the background.
-// A new project gets a file in the projects folder (~/Documents/MathStudio) as soon as it has
+// A new project gets a file in the projects folder (~/Documents/ManimUI) as soon as it has
 // something in it, named after the project — renaming the project renames the file.
 import { useSessions, useStore } from './store';
 import { activeSid, docHandle } from './sessions';

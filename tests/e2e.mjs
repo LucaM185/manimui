@@ -12,11 +12,11 @@ fs.mkdirSync(OUT, { recursive: true });
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-e2e-'));
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
 Object.assign(env, {
-  MATHSTUDIO_NO_AUTOSAVE: '1',
-  MATHSTUDIO_DATA: process.env.MS_DATA || path.join(TMP, 'data'),
-  MATHSTUDIO_TEST_SAVE_PATH: path.join(TMP, 'project.mstudio'),
-  MATHSTUDIO_TEST_EXPORT_DIR: TMP,
-  MATHSTUDIO_TEST_CONFIRM: '0',
+  MANIMUI_NO_AUTOSAVE: '1',
+  MANIMUI_DATA: process.env.MS_DATA || path.join(TMP, 'data'),
+  MANIMUI_TEST_SAVE_PATH: path.join(TMP, 'project.manimui'),
+  MANIMUI_TEST_EXPORT_DIR: TMP,
+  MANIMUI_TEST_CONFIRM: '0',
 });
 
 const fails = [];
@@ -811,8 +811,8 @@ check(tail.includes('self.clip(') && tail.includes('layer='), 'scene class with 
 await shot('code-panel');
 await win.click('button[title="Save (⌘S)"]');
 await win.waitForTimeout(500);
-check(fs.existsSync(env.MATHSTUDIO_TEST_SAVE_PATH), 'project saved');
-const saved = JSON.parse(fs.readFileSync(env.MATHSTUDIO_TEST_SAVE_PATH, 'utf8'));
+check(fs.existsSync(env.MANIMUI_TEST_SAVE_PATH), 'project saved');
+const saved = JSON.parse(fs.readFileSync(env.MANIMUI_TEST_SAVE_PATH, 'utf8'));
 check(saved.clips.length === (await state()).project.clips.length, 'saved project contains all clips');
 await S(() => window.__ms.store.setState({ exportOpen: true }));
 await win.selectOption('.modal select >> nth=0', '854x480');

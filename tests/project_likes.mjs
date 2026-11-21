@@ -13,12 +13,12 @@ const fails = []; const check = (c, m) => { console.log(c ? '   ✓' : '   ✗',
 
 const mini = (name) => ({ version: 1, settings: { name, duration: 6, fps: 30, background: '#1e1e1e', resolution: [1920, 1080] }, tracks: [{ id: 't1', name: 'Track 1' }], clips: [], assets: [] });
 const names = ['Alpha', 'Bravo', 'Charlie', 'Delta'];
-names.forEach((n, i) => { const p = path.join(DIR, `${n}.mstudio`); fs.writeFileSync(p, JSON.stringify(mini(n))); const t = (Date.now() - (i + 1) * 60e3) / 1000; fs.utimesSync(p, t, t); });
+names.forEach((n, i) => { const p = path.join(DIR, `${n}.manimui`); fs.writeFileSync(p, JSON.stringify(mini(n))); const t = (Date.now() - (i + 1) * 60e3) / 1000; fs.utimesSync(p, t, t); });
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
 Object.assign(env, {
-  MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_STARTUP_PROJECTS: '0',
-  MATHSTUDIO_PROJECTS_DIR: DIR, MATHSTUDIO_RECENTS: RECENTS, MATHSTUDIO_TEST_CONFIRM: '0', MATHSTUDIO_TEST_TRASH_UNLINK: '1',
+  MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_STARTUP_PROJECTS: '0',
+  MANIMUI_PROJECTS_DIR: DIR, MANIMUI_RECENTS: RECENTS, MANIMUI_TEST_CONFIRM: '0', MANIMUI_TEST_TRASH_UNLINK: '1',
 });
 const launch = async () => {
   const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
@@ -33,8 +33,8 @@ let { app, win } = await launch();
 const cards = () => win.$$eval('[data-testid=project-card]', (els) => els.map((e) => ({ name: e.querySelector('.proj-name')?.textContent || e.querySelector('input')?.value, liked: !!e.dataset.liked, current: !!e.dataset.current })));
 const order = async () => (await cards()).filter((c) => !c.current).map((c) => c.name + (c.liked ? '♥' : '')).join(',');
 const openPopup = async () => { await win.click('[data-testid=tb-projects]'); await win.waitForSelector('[data-testid=project-card][data-path]'); };
-const cardSel = (n) => `[data-testid=project-card][data-path$="/${n}.mstudio"]`;
-const favs = () => { try { return JSON.parse(fs.readFileSync(FAVS, 'utf8')).map((p) => path.basename(p, '.mstudio')); } catch (e) { return []; } };
+const cardSel = (n) => `[data-testid=project-card][data-path$="/${n}.manimui"]`;
+const favs = () => { try { return JSON.parse(fs.readFileSync(FAVS, 'utf8')).map((p) => path.basename(p, '.manimui')); } catch (e) { return []; } };
 
 console.log('▸ heart on the card');
 await openPopup();

@@ -7,7 +7,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 REL="${MS_RELEASE:-release}"
 NEXT="$REL-next"
-IMAGE="mathstudio-linux-test${MS_RELEASE:+-$(basename "$REL")}"
+IMAGE="manimui-linux-test${MS_RELEASE:+-$(basename "$REL")}"
 OUT="$PWD/$REL/test-out"; mkdir -p "$OUT" "$NEXT"; chmod 777 "$OUT"
 # shellcheck disable=SC2086
 docker buildx build --platform linux/amd64 -f packaging/linux/Dockerfile --target artifacts-next ${MS_BUILDX_ARGS:-} \

@@ -6,14 +6,14 @@
 //   - an AppImage can't ship the setuid chrome-sandbox ("SUID sandbox helper ... not configured")
 //   - Ubuntu 24.04+ (AppArmor restricts unprivileged user namespaces), containers, some hardened
 //     kernels: "Failed to move to new namespace" / zygote check failed
-// So `mathstudio` becomes this script and the Electron binary `mathstudio-bin`; the script keeps
+// So `manimui` becomes this script and the Electron binary `manimui-bin`; the script keeps
 // the sandbox whenever the kernel lets an unprivileged user create the namespaces Chromium needs.
 // The windows already run with webPreferences.sandbox=false and only load the app's own files.
 const fs = require('fs');
 const path = require('path');
 
 const launcher = (bin) => `#!/bin/sh
-# MathStudio launcher (packaging/linux/after-pack.cjs): adds --no-sandbox where Chromium's sandbox
+# ManimUI launcher (packaging/linux/after-pack.cjs): adds --no-sandbox where Chromium's sandbox
 # can't start (AppImage, Ubuntu 24.04+ user-namespace restriction, containers), then runs Electron.
 HERE="$(dirname "$(readlink -f "$0")")"
 sandbox_ok() {
@@ -23,7 +23,7 @@ sandbox_ok() {
 }
 case " $* " in
   *" --no-sandbox "*) ;;
-  *) [ "$MATHSTUDIO_SANDBOX" = "1" ] || sandbox_ok || set -- --no-sandbox "$@" ;;
+  *) [ "$MANIMUI_SANDBOX" = "1" ] || sandbox_ok || set -- --no-sandbox "$@" ;;
 esac
 exec "$HERE/${bin}" "$@"
 `;

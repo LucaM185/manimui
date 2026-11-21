@@ -39,7 +39,7 @@ function installMock({ ipcMain }) {
 
 async function launch(checkpointDir) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
-  Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_TEST_CONFIRM: '0', MATHSTUDIO_CHECKPOINTS: checkpointDir });
+  Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_TEST_CONFIRM: '0', MANIMUI_CHECKPOINTS: checkpointDir });
   const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
   await app.evaluate(installMock);
   const win = await app.firstWindow();
@@ -77,7 +77,7 @@ async function sendMsg(win, text) {
 }
 
 const gitLog = (dir) => execFileSync('git', ['log', '--format=%s'], { cwd: dir, encoding: 'utf8' }).trim().split('\n');
-const gitShow = (dir, rev) => JSON.parse(execFileSync('git', ['show', `${rev}:project.mstudio`], { cwd: dir, encoding: 'utf8' }));
+const gitShow = (dir, rev) => JSON.parse(execFileSync('git', ['show', `${rev}:project.manimui`], { cwd: dir, encoding: 'utf8' }));
 
 // ================================================================== 1. git checkpoints
 {

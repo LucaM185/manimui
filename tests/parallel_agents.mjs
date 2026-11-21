@@ -13,7 +13,7 @@ const RECENTS = path.join(TMP, 'state', 'recent-projects.json');
 const fails = []; const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails.push(m); };
 
 const mini = (name, bg) => ({ version: 1, settings: { name, duration: 6, fps: 30, background: bg, resolution: [1920, 1080] }, tracks: [{ id: 't1', name: 'Track 1' }], clips: [], assets: [] });
-const P = { Alpha: path.join(DIR, 'Alpha.mstudio'), Beta: path.join(DIR, 'Beta.mstudio'), Gamma: path.join(DIR, 'Gamma.mstudio') };
+const P = { Alpha: path.join(DIR, 'Alpha.manimui'), Beta: path.join(DIR, 'Beta.manimui'), Gamma: path.join(DIR, 'Gamma.manimui') };
 fs.writeFileSync(P.Alpha, JSON.stringify(mini('Alpha', '#1e1e1e')));
 fs.writeFileSync(P.Beta, JSON.stringify(mini('Beta', '#10202a')));
 fs.writeFileSync(P.Gamma, JSON.stringify(mini('Gamma', '#2a1020')));
@@ -58,9 +58,9 @@ function installMock({ ipcMain }) {
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
 Object.assign(env, {
-  MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'),
-  MATHSTUDIO_PROJECTS_DIR: DIR, MATHSTUDIO_RECENTS: RECENTS, MATHSTUDIO_TEST_CONFIRM: '0',
-  MATHSTUDIO_CHECKPOINTS: path.join(TMP, 'cp'),
+  MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'),
+  MANIMUI_PROJECTS_DIR: DIR, MANIMUI_RECENTS: RECENTS, MANIMUI_TEST_CONFIRM: '0',
+  MANIMUI_CHECKPOINTS: path.join(TMP, 'cp'),
 });
 const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
 await app.evaluate(installMock);
@@ -207,9 +207,9 @@ try {
   console.log('▸ autosave wrote each project to its own file');
   await win.waitForTimeout(1500);
   const disk = (p) => JSON.parse(fs.readFileSync(p, 'utf8')).clips.map((c) => c.name);
-  check(JSON.stringify(disk(P.Alpha)) === JSON.stringify(['A-1', 'A-2', 'A-3']), `Alpha.mstudio on disk: ${JSON.stringify(disk(P.Alpha))}`);
-  check(JSON.stringify(disk(P.Beta)) === JSON.stringify(['B-1', 'B-2']), `Beta.mstudio on disk: ${JSON.stringify(disk(P.Beta))}`);
-  check(disk(P.Gamma).length === 0, 'Gamma.mstudio untouched');
+  check(JSON.stringify(disk(P.Alpha)) === JSON.stringify(['A-1', 'A-2', 'A-3']), `Alpha.manimui on disk: ${JSON.stringify(disk(P.Alpha))}`);
+  check(JSON.stringify(disk(P.Beta)) === JSON.stringify(['B-1', 'B-2']), `Beta.manimui on disk: ${JSON.stringify(disk(P.Beta))}`);
+  check(disk(P.Gamma).length === 0, 'Gamma.manimui untouched');
   w = await world();
   check(!w.Alpha.dirty && !w.Beta.dirty, 'background projects are saved (not dirty)');
 
@@ -250,10 +250,10 @@ try {
   await win.click(pill('Beta'));
   await win.click('[data-testid=tb-projects]');
   await win.waitForSelector('[data-testid=project-card]');
-  check(await win.$(`[data-testid=project-card][data-path$="/Alpha.mstudio"] [data-testid=project-ai-badge]`) !== null, 'Alpha card shows "AI working"');
+  check(await win.$(`[data-testid=project-card][data-path$="/Alpha.manimui"] [data-testid=project-ai-badge]`) !== null, 'Alpha card shows "AI working"');
   await shot('07-projects-ai');
   // switching from the browser to an open project keeps its run going
-  await win.click(`[data-testid=project-card][data-path$="/Alpha.mstudio"]`);
+  await win.click(`[data-testid=project-card][data-path$="/Alpha.manimui"]`);
   await win.waitForFunction((p) => window.__ms.store.getState().filePath === p, P.Alpha, { timeout: 5000 });
   check(await win.evaluate(() => window.__ms.agent.useAgent.getState().running), 'opening Alpha from the browser reattaches to its running agent');
   while (await anyRunning()) await win.waitForTimeout(200);
@@ -287,12 +287,12 @@ try {
   await win.waitForTimeout(800);
   check(!(await pills()).some((p) => p.name === 'Gamma'), `a closed pill stays closed after the strip refreshes: ${(await pills()).map((p) => p.name).join(', ')}`);
   const dis = await win.evaluate(() => localStorage.getItem('ms.strip.dismissed'));
-  check(!!dis && dis.includes('Gamma.mstudio'), 'the closed file is remembered across launches');
+  check(!!dis && dis.includes('Gamma.manimui'), 'the closed file is remembered across launches');
   // opening it again puts it back
   await win.evaluate((p) => window.__ms.actions.switchToProject(p, { quiet: true }), P.Gamma);
   await win.waitForTimeout(500);
   check((await pills()).some((p) => p.name === 'Gamma' && p.current), 'reopening a closed project brings its pill back');
-  check(!(await win.evaluate(() => localStorage.getItem('ms.strip.dismissed') || '')).includes('Gamma.mstudio'), 'reopening forgets the dismissal');
+  check(!(await win.evaluate(() => localStorage.getItem('ms.strip.dismissed') || '')).includes('Gamma.manimui'), 'reopening forgets the dismissal');
   await shot('08-final');
 
   console.log('▸ Chrome-style tabs: + opens a new tab at the end, closing the tab on screen shows its neighbour');

@@ -1,11 +1,11 @@
 # Linux x86_64 build (AppImage + .deb). Run via packaging/linux/build.sh, which builds everything
 # inside an amd64 Docker container and stages the Python bundle in build-res/ first.
-appId: app.mathstudio.ide
-productName: MathStudio
-copyright: MathStudio
-# the .deb (fpm) refuses to build without a homepage; placeholder until the project has a site
+appId: app.manimui.ide
+productName: ManimUI
+copyright: ManimUI
+# the .deb (fpm) refuses to build without a homepage: the download site (gh-pages branch)
 extraMetadata:
-  homepage: https://mathstudio.local
+  homepage: https://lucam185.github.io/manimui/
 directories:
   output: release
   buildResources: packaging
@@ -16,7 +16,7 @@ files:
   - package.json
 # node_modules: electron-builder adds the production dependencies only (electron-updater + its
 # deps); everything the renderer uses is bundled into dist/ by Vite and lives in devDependencies.
-# never ship the developer's .env (API key): the app reads keys from Settings / ~/.config/MathStudio
+# never ship the developer's .env (API key): the app reads keys from Settings / ~/.config/ManimUI
 extraResources:
   - from: build-res/engine
     to: engine
@@ -26,7 +26,7 @@ extraResources:
     to: models
 # Updates: GitHub Releases of package.json "repository" (owner/repo inferred). The CI uploads the
 # files itself (.github/workflows/release.yml); this only makes electron-builder write latest-linux.yml.
-# mathstudio = launcher script that adds --no-sandbox where Chromium's sandbox can't start
+# manimui = launcher script that adds --no-sandbox where Chromium's sandbox can't start
 afterPack: packaging/linux/after-pack.cjs
 publish:
   - provider: github
@@ -34,25 +34,25 @@ linux:
   target:
     - AppImage
     - deb
-  executableName: mathstudio
+  executableName: manimui
   icon: packaging/icon.png
   category: Graphics
-  maintainer: MathStudio
-  vendor: MathStudio
+  maintainer: ManimUI
+  vendor: ManimUI
   synopsis: Visual IDE for ManimGL animations
   description: >-
-    MathStudio is a visual editor for ManimGL animations: drag mobjects onto a timeline,
+    ManimUI is a visual editor for ManimGL animations: drag mobjects onto a timeline,
     tune them without code, use an AI agent, and export videos or ManimGL code.
     Python, ManimGL and ffmpeg are bundled.
   desktop:
-    StartupWMClass: MathStudio
+    StartupWMClass: ManimUI
 # No version in the file names: the website's download button links to
-# github.com/<owner>/<repo>/releases/latest/download/MathStudio-x86_64.AppImage, and an AppImage
+# github.com/<owner>/<repo>/releases/latest/download/ManimUI-x86_64.AppImage, and an AppImage
 # without a version in its name is replaced in place when it updates itself.
 appImage:
-  artifactName: MathStudio-x86_64.AppImage
+  artifactName: ManimUI-x86_64.AppImage
 deb:
-  artifactName: MathStudio-amd64.deb
+  artifactName: ManimUI-amd64.deb
   compression: xz
   depends:
     - libgtk-3-0

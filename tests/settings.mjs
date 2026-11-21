@@ -16,9 +16,9 @@ const shot = (win, name) => win.screenshot({ path: path.join(OUT, name), timeout
 
 const launch = async () => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'DEBUG' && !k.startsWith('OPENROUTER')));
-  Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'),
-    MATHSTUDIO_PROJECTS_DIR: path.join(TMP, 'P'), MATHSTUDIO_RECENTS: path.join(TMP, 'r.json'), MATHSTUDIO_SETTINGS: SETTINGS,
-    MATHSTUDIO_TEST_KEYCHECK: GOOD, MATHSTUDIO_STARTUP_PROJECTS: '0' });
+  Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'),
+    MANIMUI_PROJECTS_DIR: path.join(TMP, 'P'), MANIMUI_RECENTS: path.join(TMP, 'r.json'), MANIMUI_SETTINGS: SETTINGS,
+    MANIMUI_TEST_KEYCHECK: GOOD, MANIMUI_STARTUP_PROJECTS: '0' });
   const opts = process.env.MS_APP ? { executablePath: process.env.MS_APP, args: process.env.MS_NO_SANDBOX ? ['--no-sandbox'] : [], env } : { args: [ROOT], env, cwd: ROOT };
   const app = await electron.launch(opts);
   const win = await app.firstWindow();

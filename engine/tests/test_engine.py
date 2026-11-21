@@ -334,7 +334,7 @@ server.run_job(R, server.next_job())
 check(order[-1] == "late-bg" and server._jobs.empty(), "the waiting background job still runs")
 
 # job watchdog: an endless job is interrupted — SIGALRM on POSIX, a watcher thread on Windows
-# (no SIGALRM there; MATHSTUDIO_WATCHDOG=thread forces that path here too)
+# (no SIGALRM there; MANIMUI_WATCHDOG=thread forces that path here too)
 import signal  # noqa: E402
 
 
@@ -345,7 +345,7 @@ def endless(r):
 
 
 for mode in (["signal"] if hasattr(signal, "setitimer") else []) + ["thread"]:
-    os.environ["MATHSTUDIO_WATCHDOG"] = mode
+    os.environ["MANIMUI_WATCHDOG"] = mode
     wd = server._Watchdog(0.4)
     check(wd.use_signal == (mode == "signal"), f"watchdog uses {mode}")
     fut = server.submit(2, endless)
@@ -372,7 +372,7 @@ for mode in (["signal"] if hasattr(signal, "setitimer") else []) + ["thread"]:
     except server.JobTimeout as e:
         late = e
     check(fut.result(timeout=1) == "quick" and late is None, f"{mode} watchdog stays quiet after a quick job ({late})")
-os.environ.pop("MATHSTUDIO_WATCHDOG", None)
+os.environ.pop("MANIMUI_WATCHDOG", None)
 if hasattr(signal, "setitimer"):
     signal.signal(signal.SIGALRM, signal.SIG_DFL)
 

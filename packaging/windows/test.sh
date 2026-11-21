@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install release/MathStudio-Setup.exe silently (per user) and drive the installed app — on Windows,
+# Install release/ManimUI-Setup.exe silently (per user) and drive the installed app — on Windows,
 # in Git Bash (GitHub's windows-latest runner). Screenshots → release/test-out/.
 # The runners have no GPU (only Windows' OpenGL 1.1), so this also proves the automatic fallback
 # to the bundled Mesa software renderer.
@@ -11,17 +11,17 @@ fail=0; failed=()
 
 echo "== silent install"
 T0=$SECONDS
-CODE=$(powershell -NoProfile -Command "\$p = Start-Process -Wait -PassThru -FilePath '$(cygpath -w "$PWD/release/MathStudio-Setup.exe")' -ArgumentList '/S'; \$p.ExitCode" | tr -d '\r')
+CODE=$(powershell -NoProfile -Command "\$p = Start-Process -Wait -PassThru -FilePath '$(cygpath -w "$PWD/release/ManimUI-Setup.exe")' -ArgumentList '/S'; \$p.ExitCode" | tr -d '\r')
 echo "   installer exit code $CODE after $((SECONDS - T0)) s"
-INSTALL="$(cygpath -u "$LOCALAPPDATA")/Programs/MathStudio"
-APP="$INSTALL/MathStudio.exe"
+INSTALL="$(cygpath -u "$LOCALAPPDATA")/Programs/ManimUI"
+APP="$INSTALL/ManimUI.exe"
 # (the installer may hand over to a child process: give the files a moment to appear)
 for i in $(seq 1 60); do [ -f "$APP" ] && break; sleep 5; done
 if [ ! -f "$APP" ]; then
   echo "✗ $APP missing after install"
   ls -la "$(cygpath -u "$LOCALAPPDATA")/Programs" 2>&1
-  powershell -NoProfile -Command "Get-ChildItem HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall, HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { \$_.DisplayName -like '*MathStudio*' } | Format-List DisplayName, InstallLocation, UninstallString"
-  find /c/Users/runneradmin/AppData "/c/Program Files" -maxdepth 4 -iname 'MathStudio*' 2>/dev/null
+  powershell -NoProfile -Command "Get-ChildItem HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall, HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { \$_.DisplayName -like '*ManimUI*' } | Format-List DisplayName, InstallLocation, UninstallString"
+  find /c/Users/runneradmin/AppData "/c/Program Files" -maxdepth 4 -iname 'ManimUI*' 2>/dev/null
   exit 1
 fi
 RES="$INSTALL/resources"

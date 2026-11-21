@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Builds MathStudio for Linux x86_64 (AppImage + .deb) with a bundled standalone Python
+# Builds ManimUI for Linux x86_64 (AppImage + .deb) with a bundled standalone Python
 # (python-build-standalone via uv) holding ManimGL & co, a static ffmpeg and the search model.
 # Run through packaging/linux/build.sh.
 # manimpango publishes no Linux wheels (it links the system pango): build one on Ubuntu 22.04 so its
@@ -70,7 +70,7 @@ RUN npx electron-builder --config packaging/linux/electron-builder.yml --linux d
  && node packaging/linux/merge-latest.cjs /tmp/latest-appimage.yml release/latest-linux.yml release/latest-linux.yml
 
 FROM scratch AS artifacts
-COPY --from=build /app/release/MathStudio-x86_64.AppImage /app/release/MathStudio-amd64.deb /app/release/latest-linux.yml /
+COPY --from=build /app/release/ManimUI-x86_64.AppImage /app/release/ManimUI-amd64.deb /app/release/latest-linux.yml /
 
 # Only for packaging/linux/test-update.sh: the same app with a higher version, so a real AppImage
 # can update itself to it (and the differential download between two builds gets measured).
@@ -80,4 +80,4 @@ RUN npx electron-builder --config packaging/linux/electron-builder.yml --linux A
       -c.extraMetadata.version=${NEXT_VERSION} -c.directories.output=release-next
 
 FROM scratch AS artifacts-next
-COPY --from=build-next /app/release-next/MathStudio-x86_64.AppImage /app/release-next/latest-linux.yml /
+COPY --from=build-next /app/release-next/ManimUI-x86_64.AppImage /app/release-next/latest-linux.yml /

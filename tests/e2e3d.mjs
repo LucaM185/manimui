@@ -12,11 +12,11 @@ fs.mkdirSync(OUT, { recursive: true });
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-e2e3d-'));
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
 Object.assign(env, {
-  MATHSTUDIO_NO_AUTOSAVE: '1',
-  MATHSTUDIO_DATA: process.env.MS_DATA || path.join(TMP, 'data'),
-  MATHSTUDIO_TEST_SAVE_PATH: path.join(TMP, 'project.mstudio'),
-  MATHSTUDIO_TEST_EXPORT_DIR: TMP,
-  MATHSTUDIO_TEST_CONFIRM: '0',
+  MANIMUI_NO_AUTOSAVE: '1',
+  MANIMUI_DATA: process.env.MS_DATA || path.join(TMP, 'data'),
+  MANIMUI_TEST_SAVE_PATH: path.join(TMP, 'project.manimui'),
+  MANIMUI_TEST_EXPORT_DIR: TMP,
+  MANIMUI_TEST_CONFIRM: '0',
 });
 
 const fails = [];

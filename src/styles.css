@@ -158,7 +158,7 @@ a { color: var(--accent); cursor: pointer; }
 .lib-name.muted { color: var(--muted); }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 
-/* second library (mathstudio library) */
+/* second library (ManimUI library) */
 .lib-card.nc { border-color: rgba(220, 38, 38, .35); }
 .nc-overlay { position: absolute; inset: 0; background: rgba(220, 38, 38, .04); display: flex; align-items: flex-end; justify-content: center; pointer-events: none; }
 .nc-overlay span { font-size: 8.5px; font-weight: 700; letter-spacing: .06em; background: rgba(185, 28, 28, .3); color: #fff; padding: 2px 5px; margin-bottom: 4px; border-radius: 3px; }
@@ -994,7 +994,7 @@ h5 .anim-name { font-size: 11px; font-weight: 500; color: var(--muted); text-tra
 .part-origin-link { stroke: rgba(255, 201, 77, .5); stroke-width: 1; stroke-dasharray: 2 3; }
 .sel-label.part { fill: var(--sel); font-size: 10.5px; }
 
-/* MathStudio Trash (Projects popup) */
+/* ManimUI Trash (Projects popup) */
 .proj-trash-btn { color: var(--muted); flex: none; }
 .trash-note { font-size: 11.5px; }
 .proj-card.trashed { cursor: default; }

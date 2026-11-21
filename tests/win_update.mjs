@@ -1,15 +1,15 @@
 // A real Windows self-update: the installed app (packaging/windows/test.sh installed it) finds a newer
 // installer on a local server, downloads it, quits, the installer runs silently and starts the new
 // version. Run on Windows after test.sh:
-//   MS_APP=%LOCALAPPDATA%\Programs\MathStudio\MathStudio.exe MS_NEXT=release-next MS_CUR=release node tests/win_update.mjs
-// MS_NEXT = the same app built as a higher version (MathStudio-Setup.exe + .blockmap + latest.yml),
+//   MS_APP=%LOCALAPPDATA%\Programs\ManimUI\ManimUI.exe MS_NEXT=release-next MS_CUR=release node tests/win_update.mjs
+// MS_NEXT = the same app built as a higher version (ManimUI-Setup.exe + .blockmap + latest.yml),
 // MS_CUR = the installed version's files. The server lays them out like GitHub release URLs
 // (/v<version>/<file>), so the updater fetches the old .blockmap for a differential download.
 import { _electron as electron } from 'playwright';
 import { execSync } from 'child_process';
 import fs from 'fs'; import http from 'http'; import os from 'os'; import path from 'path';
 const APP = process.env.MS_APP; const NEXT = process.env.MS_NEXT; const CUR = process.env.MS_CUR;
-if (!APP || !NEXT || !CUR) { console.error('set MS_APP (installed MathStudio.exe), MS_NEXT and MS_CUR (release folders)'); process.exit(2); }
+if (!APP || !NEXT || !CUR) { console.error('set MS_APP (installed ManimUI.exe), MS_NEXT and MS_CUR (release folders)'); process.exit(2); }
 const OUT = process.env.MS_OUT || path.join(os.tmpdir(), 'ms-out'); fs.mkdirSync(OUT, { recursive: true });
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-upd-'));
 const fails = []; const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails.push(m); };
@@ -43,15 +43,15 @@ const URL_ = `http://127.0.0.1:${server.address().port}/v${NEXT_VERSION}/`;
 
 const SETTINGS = path.join(TMP, 'settings.json');
 fs.writeFileSync(SETTINGS, JSON.stringify({ autoCheckUpdates: false }));
-const running = () => { try { return /MathStudio\.exe/i.test(execSync('tasklist /FI "IMAGENAME eq MathStudio.exe" /NH', { encoding: 'utf8' })); } catch { return false; } };
-const killAll = () => { try { execSync('taskkill /IM MathStudio.exe /F /T', { stdio: 'ignore' }); } catch { /* none */ } };
+const running = () => { try { return /ManimUI\.exe/i.test(execSync('tasklist /FI "IMAGENAME eq ManimUI.exe" /NH', { encoding: 'utf8' })); } catch { return false; } };
+const killAll = () => { try { execSync('taskkill /IM ManimUI.exe /F /T', { stdio: 'ignore' }); } catch { /* none */ } };
 
 const logs = [];
 const launch = async () => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'DEBUG' && !k.startsWith('OPENROUTER')));
-  Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'),
-    MATHSTUDIO_PROJECTS_DIR: path.join(TMP, 'P'), MATHSTUDIO_RECENTS: path.join(TMP, 'r.json'), MATHSTUDIO_SETTINGS: SETTINGS,
-    MATHSTUDIO_STARTUP_PROJECTS: '0', MATHSTUDIO_UPDATE_URL: URL_, HF_HUB_OFFLINE: '1', MATHSTUDIO_OFFLINE: '1' });
+  Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_DATA: path.join(TMP, 'data'),
+    MANIMUI_PROJECTS_DIR: path.join(TMP, 'P'), MANIMUI_RECENTS: path.join(TMP, 'r.json'), MANIMUI_SETTINGS: SETTINGS,
+    MANIMUI_STARTUP_PROJECTS: '0', MANIMUI_UPDATE_URL: URL_, HF_HUB_OFFLINE: '1', MANIMUI_OFFLINE: '1' });
   const app = await electron.launch({ executablePath: APP, env, timeout: 240000 });
   const grab = (d) => { for (const l of d.toString().split('\n')) if (/\[update\]/.test(l)) { logs.push(l); console.log('     ' + l.trim().slice(0, 220)); } };
   app.process().stdout?.on('data', grab); app.process().stderr?.on('data', grab);
@@ -78,9 +78,9 @@ try {
   await win.waitForFunction(() => ['downloading', 'ready'].includes(document.querySelector('[data-testid=update-status]')?.getAttribute('data-state')), null, { timeout: 60000 });
   check(true, `sees ${NEXT_VERSION} on the server and starts downloading (${el()})`);
   await waitState(win, 'ready', 900000);
-  const size = fs.statSync(path.join(NEXT, 'MathStudio-Setup.exe')).size;
+  const size = fs.statSync(path.join(NEXT, 'ManimUI-Setup.exe')).size;
   check(true, `downloaded (${el()}): ${(served / 1e6).toFixed(1)} MB transferred for a ${(size / 1e6).toFixed(0)} MB installer (${((100 * served) / size).toFixed(0)}%)`);
-  check(hits.some((h) => h.includes(`/v${CUR_VERSION}/MathStudio-Setup.exe.blockmap`)), 'fetched the installed version\'s blockmap (differential download)');
+  check(hits.some((h) => h.includes(`/v${CUR_VERSION}/ManimUI-Setup.exe.blockmap`)), 'fetched the installed version\'s blockmap (differential download)');
   await win.locator('[data-testid=settings-updates]').screenshot({ path: path.join(OUT, 'win_update_ready.png') });
 
   const closed = new Promise((r) => app.on('close', r));

@@ -11,7 +11,7 @@ const OUT = process.env.E2E_OUT || path.join(ROOT, 'tests', 'out', 'agent');
 fs.mkdirSync(OUT, { recursive: true });
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-agent-'));
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
-Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_DATA: process.env.MS_DATA || path.join(TMP, 'data'), MATHSTUDIO_TEST_CONFIRM: '0' });
+Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_DATA: process.env.MS_DATA || path.join(TMP, 'data'), MANIMUI_TEST_CONFIRM: '0' });
 
 const prompts = process.argv.slice(2).length ? process.argv.slice(2) : [
   'Plot sin(x) on axes and trace a glowing dot along the curve',

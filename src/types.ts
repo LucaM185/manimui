@@ -29,7 +29,7 @@ export interface LibraryItem {
   tags?: string[];
   params: ParamDef[];
   code: string;
-  /** imported (mathstudio library) items: the file it came from, its licence, non-commercial flag */
+  /** imported (ManimUI library) items: the file it came from, its licence, non-commercial flag */
   category_source?: string;
   rel?: string;
   kind?: string;
@@ -295,7 +295,7 @@ export interface ProjectEntry {
   name: string;
   /** project name stored inside the file */
   title?: string;
-  /** last time it was opened / saved in MathStudio (ms), 0 if only found in the projects folder */
+  /** last time it was opened / saved in ManimUI (ms), 0 if only found in the projects folder */
   opened: number;
   exists: boolean;
   inFolder: boolean;
@@ -316,7 +316,7 @@ export interface ProjectEntry {
   versions?: number;
 }
 
-/** A project in the MathStudio Trash (restorable until `expires`). */
+/** A project in the ManimUI Trash (restorable until `expires`). */
 /** One ⌘S version of a project (a commit in its history). */
 export interface ProjectVersion {
   id: string;

@@ -35,7 +35,7 @@ export default function ExportDialog() {
   }, []);
 
   const start = async () => {
-    const out = await window.studio.chooseExportPath(project.settings.name || 'MathStudio', format);
+    const out = await window.studio.chooseExportPath(project.settings.name || 'ManimUI', format);
     if (!out) return;
     useStore.getState().commit((p) => { p.settings.resolution = res; p.settings.fps = fps; }, { transient: true });
     try {

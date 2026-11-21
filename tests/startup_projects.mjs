@@ -8,8 +8,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-start-'));
 const fails = []; const check = (c, m) => { console.log(c ? '   ✓' : '   ✗', m); if (!c) fails.push(m); };
 const run = async (extra) => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
-  Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_HIDDEN: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'),
-    MATHSTUDIO_PROJECTS_DIR: path.join(TMP, 'P'), MATHSTUDIO_RECENTS: path.join(TMP, 'r.json') }, extra);
+  Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_HIDDEN: '1', MANIMUI_DATA: path.join(TMP, 'data'),
+    MANIMUI_PROJECTS_DIR: path.join(TMP, 'P'), MANIMUI_RECENTS: path.join(TMP, 'r.json') }, extra);
   const app = await electron.launch({ args: [ROOT], env, cwd: ROOT });
   const win = await app.firstWindow();
   await win.setViewportSize({ width: 1600, height: 950 });
@@ -18,7 +18,7 @@ const run = async (extra) => {
   return { app, win };
 };
 {
-  const { app, win } = await run({ MATHSTUDIO_STARTUP_PROJECTS: '1' });
+  const { app, win } = await run({ MANIMUI_STARTUP_PROJECTS: '1' });
   check(await win.evaluate(() => window.__ms.store.getState().projectsOpen), 'projects popup open at launch');
   check(!!(await win.$('[data-testid=projects-new]')), 'popup shows New project');
   await win.screenshot({ path: path.join(OUT, 'startup_projects.png') });
@@ -27,7 +27,7 @@ const run = async (extra) => {
   const tb = await win.$eval('.topbar', (t) => ({ text: t.innerText, brand: !!t.querySelector('.brand, .logo'),
     btn: innerWidth - t.querySelector('[data-testid=tb-settings]').getBoundingClientRect().right, name: t.querySelector('.project-name').getBoundingClientRect().left,
     align: getComputedStyle(t.querySelector('.project-name')).textAlign }));
-  check(!tb.brand && !/MathStudio/.test(tb.text), 'no logo / MathStudio brand');
+  check(!tb.brand && !/ManimUI/.test(tb.text), 'no logo / ManimUI brand');
   check(!/\bNew\b|\bOpen\b/.test(tb.text), 'no New / Open buttons in top bar');
   check(tb.btn < 30 && tb.name < 300 && tb.align === 'left', `name on the left, icon buttons at the right edge (settings ${tb.btn}px from edge, name ${tb.name}, ${tb.align})`);
   check(!/Projects|Code|Export|Settings/.test(tb.text), 'top bar shows icons only — no Projects/Code/Export/Settings text');

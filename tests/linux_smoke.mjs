@@ -1,10 +1,10 @@
 // Smoke test for a packaged build — Linux (run inside packaging/linux/test.sh's container, under Xvfb):
-//   MS_APP=/opt/MathStudio/mathstudio node tests/linux_smoke.mjs
+//   MS_APP=/opt/ManimUI/manimui node tests/linux_smoke.mjs
 // Windows (packaging/windows/test.sh, after a silent install; MS_EXPECT_SOFTWARE_GL=1 on GPU-less
 // runners = the engine must have fallen back to the bundled Mesa by itself):
-//   MS_APP=%LOCALAPPDATA%\Programs\MathStudio\MathStudio.exe node tests/linux_smoke.mjs
+//   MS_APP=%LOCALAPPDATA%\Programs\ManimUI\ManimUI.exe node tests/linux_smoke.mjs
 // or macOS (launched with Finder's minimal PATH; afterwards the bundle's signature must still verify):
-//   MS_APP=release/mac-arm64/MathStudio.app/Contents/MacOS/MathStudio node tests/linux_smoke.mjs  (after build.sh --install: MS_APP=/Applications/MathStudio.app/…)
+//   MS_APP=release/mac-arm64/ManimUI.app/Contents/MacOS/ManimUI node tests/linux_smoke.mjs  (after build.sh --install: MS_APP=/Applications/ManimUI.app/…)
 // Engine boots from the bundled Python, library thumbnails render, GL renderer detected, Auto picks
 // Low on software GL, semantic search works offline from the bundled model, preview renders a
 // clip, an mp4 export goes through the bundled ffmpeg, LaTeX-less systems get a readable error.
@@ -19,9 +19,9 @@ const fails = []; const check = (c, m) => { console.log(c ? '   ✓' : '   ✗',
 const t0 = Date.now(); const el = () => `${((Date.now() - t0) / 1000).toFixed(0)}s`;
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'DEBUG' && !k.startsWith('OPENROUTER')));
-Object.assign(env, { MATHSTUDIO_NO_AUTOSAVE: '1', MATHSTUDIO_DATA: path.join(TMP, 'data'), MATHSTUDIO_PROJECTS_DIR: path.join(TMP, 'P'),
-  MATHSTUDIO_RECENTS: path.join(TMP, 'r.json'), MATHSTUDIO_SETTINGS: path.join(TMP, 'settings.json'), MATHSTUDIO_STARTUP_PROJECTS: '0',
-  HF_HUB_OFFLINE: '1', MATHSTUDIO_OFFLINE: '1', MATHSTUDIO_JOB_TIMEOUT: '120' });
+Object.assign(env, { MANIMUI_NO_AUTOSAVE: '1', MANIMUI_DATA: path.join(TMP, 'data'), MANIMUI_PROJECTS_DIR: path.join(TMP, 'P'),
+  MANIMUI_RECENTS: path.join(TMP, 'r.json'), MANIMUI_SETTINGS: path.join(TMP, 'settings.json'), MANIMUI_STARTUP_PROJECTS: '0',
+  HF_HUB_OFFLINE: '1', MANIMUI_OFFLINE: '1', MANIMUI_JOB_TIMEOUT: '120' });
 const MAC = process.platform === 'darwin';
 if (MAC) env.PATH = '/usr/bin:/bin:/usr/sbin:/sbin'; // what an app opened from Finder / the Dock gets
 const app = await electron.launch({ executablePath: APP, args: process.env.MS_NO_SANDBOX ? ['--no-sandbox'] : [], env, timeout: 180000 });

@@ -1,9 +1,9 @@
 #!/bin/bash
-# Double-click (or ./MathStudio.command) to launch MathStudio from this folder's sources — always the
-# newest code, committed or not, whatever MathStudio.app is installed. The UI bundle is rebuilt
+# Double-click (or ./ManimUI.command) to launch ManimUI from this folder's sources — always the
+# newest code, committed or not, whatever ManimUI.app is installed. The UI bundle is rebuilt
 # when anything under it changed (edits, new or deleted files), npm packages are reinstalled when
 # package-lock.json changed; the engine and the main process run straight from the sources.
-#   ./MathStudio.command --install   also rebuild /Applications/MathStudio.app from these sources
+#   ./ManimUI.command --install   also rebuild /Applications/ManimUI.app from these sources
 #                                    (~3–4 min) and open that instead
 cd "$(dirname "$0")"
 unset ELECTRON_RUN_AS_NODE
@@ -12,7 +12,7 @@ unset ELECTRON_RUN_AS_NODE
 if [ "${1:-}" = --install ]; then
   shift
   packaging/mac/build.sh --install || exit 1
-  exec open /Applications/MathStudio.app --args "$@"
+  exec open /Applications/ManimUI.app --args "$@"
 fi
 
 if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then

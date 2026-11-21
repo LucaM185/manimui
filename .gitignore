@@ -10,9 +10,9 @@ release/
 build-res/
 release-*/
 # CC BY-NC-SA (non-commercial) library content: kept locally, never published (see engine/library_imported.py)
-engine/mathstudio_library/non-commercial/
-engine/mathstudio_library/manim-assets/manimgl/3b1b-videos/
-engine/mathstudio_imports_nc.json
+engine/manimui_library/non-commercial/
+engine/manimui_library/manim-assets/manimgl/3b1b-videos/
+engine/manimui_imports_nc.json
 .claude/
 __pycache__/
 *.pyc

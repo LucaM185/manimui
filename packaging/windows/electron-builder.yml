@@ -1,9 +1,9 @@
 # Windows x64 build (NSIS installer). Run via packaging/windows/build.sh (on Windows: GitHub's
 # windows-latest runner in .github/workflows/release.yml), which stages the Python bundle in
 # build-res-win/ first.
-appId: app.mathstudio.ide
-productName: MathStudio
-copyright: MathStudio
+appId: app.manimui.ide
+productName: ManimUI
+copyright: ManimUI
 directories:
   output: release
   buildResources: packaging
@@ -35,12 +35,12 @@ win:
   # Not code-signed (no certificate): SmartScreen shows "Windows protected your PC" → More info →
   # Run anyway. The updater checks the sha512 in latest.yml, not a signature.
   signAndEditExecutable: true
-# Per-user install (no admin prompt) into %LOCALAPPDATA%\Programs\MathStudio, so the in-app updater
+# Per-user install (no admin prompt) into %LOCALAPPDATA%\Programs\ManimUI, so the in-app updater
 # can run the next installer silently. Versionless name: the website links to
-# github.com/<owner>/<repo>/releases/latest/download/MathStudio-Setup.exe
+# github.com/<owner>/<repo>/releases/latest/download/ManimUI-Setup.exe
 nsis:
   oneClick: true
   perMachine: false
-  artifactName: MathStudio-Setup.exe
-  shortcutName: MathStudio
+  artifactName: ManimUI-Setup.exe
+  shortcutName: ManimUI
   deleteAppDataOnUninstall: false

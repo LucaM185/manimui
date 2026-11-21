@@ -67,7 +67,7 @@ export default function RecentStrip() {
       return { id, name: d?.project.settings.name ?? '…', path: d?.filePath ?? null, background: d?.project.settings.background ?? '#1e1e1e', current: false, open: true, chat: chats[id] ?? null };
     }
     const f = files[id];
-    return { id, name: f?.title || id.split('/').pop()!.replace(/\.mstudio$/i, ''), path: id, background: f?.background || '#1e1e1e', current: false, open: false, chat: null };
+    return { id, name: f?.title || id.split('/').pop()!.replace(/\.manimui$/i, ''), path: id, background: f?.background || '#1e1e1e', current: false, open: false, chat: null };
   });
 
   const go = (p: Pill) => {

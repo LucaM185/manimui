@@ -1,4 +1,4 @@
-// MathStudio – Electron main process
+// ManimUI – Electron main process
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -19,18 +19,18 @@ const RES = BUNDLED ? process.resourcesPath : null;
 const ENGINE_DIR = BUNDLED ? path.join(RES, 'engine') : path.join(ROOT, 'engine');
 // python-build-standalone keeps python.exe (and our ffmpeg.exe) at the top on Windows, in bin/ elsewhere
 const PY_BIN = BUNDLED ? (WIN ? path.join(RES, 'python') : path.join(RES, 'python', 'bin')) : null;
-const PYTHON = process.env.MATHSTUDIO_PYTHON || (BUNDLED ? path.join(PY_BIN, WIN ? 'python.exe' : 'python3')
+const PYTHON = process.env.MANIMUI_PYTHON || (BUNDLED ? path.join(PY_BIN, WIN ? 'python.exe' : 'python3')
   : path.join(ENGINE_DIR, '.venv', WIN ? 'Scripts' : 'bin', WIN ? 'python.exe' : 'python'));
 // Windows builds also carry Mesa's software OpenGL (llvmpipe), used only when the PC has no working
 // OpenGL 3.3 driver (VMs, remote desktop, very old GPUs): the engine then says GLFAIL and is
-// restarted on it. MATHSTUDIO_SOFTWARE_GL=1 forces it.
+// restarted on it. MANIMUI_SOFTWARE_GL=1 forces it.
 const MESA_DIR = BUNDLED && WIN ? path.join(RES, 'mesa') : null;
-let softwareGL = WIN && process.env.MATHSTUDIO_SOFTWARE_GL === '1';
+let softwareGL = WIN && process.env.MANIMUI_SOFTWARE_GL === '1';
 // AppImages can't ship the setuid chrome-sandbox, and Ubuntu 24.04+ blocks the user-namespace
 // sandbox for unconfined apps, so Electron would abort at launch. The app only loads its own files.
 if (process.platform === 'linux' && process.env.APPIMAGE) app.commandLine.appendSwitch('no-sandbox');
-const DATA_DIR = process.env.MATHSTUDIO_DATA || path.join(app.getPath('userData'), 'engine-data');
-const AUTOSAVE = path.join(app.getPath('userData'), 'autosave.mstudio');
+const DATA_DIR = process.env.MANIMUI_DATA || path.join(app.getPath('userData'), 'engine-data');
+const AUTOSAVE = path.join(app.getPath('userData'), 'autosave.manimui');
 
 let win = null;
 let engine = null;
@@ -42,14 +42,14 @@ let restarts = 0;
 nativeTheme.themeSource = 'dark';
 
 // ------------------------------------------------------------------ account / plan
-// Free or Pro. Until accounts exist this comes from MATHSTUDIO_PLAN or userData/account.json
+// Free or Pro. Until accounts exist this comes from MANIMUI_PLAN or userData/account.json
 // ({"plan": "pro"}). The engine gets it too and enforces it: on Free every mobject made from a
 // project is public.
 const ACCOUNT_FILE = path.join(app.getPath('userData'), 'account.json');
 function account() {
   let stored = {};
   try { stored = JSON.parse(fs.readFileSync(ACCOUNT_FILE, 'utf8')) || {}; } catch (e) { /* none */ }
-  const plan = String(process.env.MATHSTUDIO_PLAN || stored.plan || 'free').toLowerCase() === 'pro' ? 'pro' : 'free';
+  const plan = String(process.env.MANIMUI_PLAN || stored.plan || 'free').toLowerCase() === 'pro' ? 'pro' : 'free';
   let name = stored.name;
   if (!name) try { name = require('os').userInfo().username; } catch (e) { name = 'me'; }
   return { plan, name };
@@ -58,10 +58,10 @@ function account() {
 function startEngine() {
   engineReady = new Promise((resolve, reject) => {
     if (!fs.existsSync(PYTHON)) {
-      reject(new Error(`Python environment not found at ${PYTHON}. ${BUNDLED ? 'The installation looks incomplete — reinstall MathStudio.' : 'Run ./setup.sh first.'}`));
+      reject(new Error(`Python environment not found at ${PYTHON}. ${BUNDLED ? 'The installation looks incomplete — reinstall ManimUI.' : 'Run ./setup.sh first.'}`));
       return;
     }
-    const env = { ...process.env, PYTHONWARNINGS: 'ignore', MATHSTUDIO_PLAN: account().plan, MATHSTUDIO_AUTHOR: account().name };
+    const env = { ...process.env, PYTHONWARNINGS: 'ignore', MANIMUI_PLAN: account().plan, MANIMUI_AUTHOR: account().name };
     // Windows spells it "Path", and a spread copy of process.env is case-sensitive: setting PATH
     // next to it would leave the child with two (which one wins is undefined)
     const PK = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') || 'PATH';
@@ -85,7 +85,7 @@ function startEngine() {
       delete env.PYTHONHOME;
       delete env.PYTHONPATH;
       const model = path.join(RES, 'models', 'bge-small-en-v1.5');
-      if (!env.MATHSTUDIO_EMBED_MODEL && fs.existsSync(model)) env.MATHSTUDIO_EMBED_MODEL = model;
+      if (!env.MANIMUI_EMBED_MODEL && fs.existsSync(model)) env.MANIMUI_EMBED_MODEL = model;
     }
     const proc = spawn(PYTHON, ['-u', path.join(ENGINE_DIR, 'server.py'), '--port', '0', '--data', DATA_DIR], { cwd, env });
     engine = proc;
@@ -105,7 +105,7 @@ function startEngine() {
     });
     proc.stderr.on('data', (d) => {
       const s = d.toString();
-      if (process.env.MATHSTUDIO_VERBOSE) process.stderr.write(s);
+      if (process.env.MANIMUI_VERBOSE) process.stderr.write(s);
     });
     proc.on('exit', (code) => {
       engine = null;
@@ -195,7 +195,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     backgroundColor: '#15161a',
-    title: 'MathStudio',
+    title: 'ManimUI',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     ...(process.platform === 'linux' ? { icon: path.join(ROOT, 'packaging', 'icon.png') } : {}),
     trafficLightPosition: { x: 14, y: 22 }, // centred on the project tabs (Chrome-style)
@@ -210,7 +210,7 @@ function createWindow() {
   if (process.env.VITE_DEV_URL) win.loadURL(process.env.VITE_DEV_URL);
   else win.loadFile(path.join(ROOT, 'dist', 'index.html'));
   win.once('ready-to-show', () => {
-    if (!process.env.MATHSTUDIO_HIDDEN) win.show();
+    if (!process.env.MANIMUI_HIDDEN) win.show();
   });
   win.on('close', (e) => {
     // Let the renderer write the project to disk before the window goes away.
@@ -250,15 +250,15 @@ ipcMain.handle('engine:port', async () => {
 });
 
 ipcMain.handle('project:open', async () => {
-  if (process.env.MATHSTUDIO_TEST_OPEN_PATH) {
-    const p = process.env.MATHSTUDIO_TEST_OPEN_PATH;
+  if (process.env.MANIMUI_TEST_OPEN_PATH) {
+    const p = process.env.MANIMUI_TEST_OPEN_PATH;
     const data = JSON.parse(fs.readFileSync(p, 'utf8'));
     touchRecent(p);
     return { path: p, data };
   }
   const r = await dialog.showOpenDialog(win, {
     title: 'Open project',
-    filters: [{ name: 'MathStudio Project', extensions: ['mstudio', 'json'] }],
+    filters: [{ name: 'ManimUI Project', extensions: ['manimui', 'json'] }],
     properties: ['openFile'],
   });
   if (r.canceled || !r.filePaths.length) return null;
@@ -271,7 +271,7 @@ ipcMain.handle('project:open', async () => {
 /** macOS privacy protection (TCC) refuses Documents/Desktop/Downloads/iCloud access with EPERM even
  *  though the POSIX permissions are fine — typically after the Electron binary changed (npm install,
  *  update) and lost its earlier grant. Say so instead of a raw "operation not permitted". */
-const BLOCKED_MSG = 'macOS is blocking MathStudio from reading this folder. Allow it in System Settings → Privacy & Security → Files & Folders (or Full Disk Access), then reopen the Projects panel.';
+const BLOCKED_MSG = 'macOS is blocking ManimUI from reading this folder. Allow it in System Settings → Privacy & Security → Files & Folders (or Full Disk Access), then reopen the Projects panel.';
 function isPrivacyBlock(e) { return process.platform === 'darwin' && e && e.code === 'EPERM'; }
 function readProjectFile(p) {
   try { return fs.readFileSync(p, 'utf8'); }
@@ -285,13 +285,13 @@ ipcMain.handle('project:read', async (_e, p) => {
 });
 
 ipcMain.handle('project:save', async (_e, { path: p, data, saveAs }) => {
-  let target = p || process.env.MATHSTUDIO_TEST_SAVE_PATH;
+  let target = p || process.env.MANIMUI_TEST_SAVE_PATH;
   if (!target && !saveAs && fileAutosave()) target = uniqueProjectPath(projectsDir(true), safeFileName(data && data.settings && data.settings.name));
   if (!target || saveAs) {
     const r = await dialog.showSaveDialog(win, {
       title: 'Save project',
-      defaultPath: path.join(projectsDir(true), safeFileName(data && data.settings && data.settings.name) + '.mstudio'),
-      filters: [{ name: 'MathStudio Project', extensions: ['mstudio'] }],
+      defaultPath: path.join(projectsDir(true), safeFileName(data && data.settings && data.settings.name) + '.manimui'),
+      filters: [{ name: 'ManimUI Project', extensions: ['manimui'] }],
     });
     if (r.canceled || !r.filePath) return null;
     target = r.filePath;
@@ -307,9 +307,9 @@ ipcMain.handle('project:save', async (_e, { path: p, data, saveAs }) => {
 });
 
 // ------------------------------------------------------------------ projects browser
-// Recent projects (most recent first) live in userData; every .mstudio in the projects folder
-// (~/Documents/MathStudio) is listed too. Thumbnails are cached per path, keyed by file mtime.
-const RECENTS = process.env.MATHSTUDIO_RECENTS || path.join(app.getPath('userData'), 'recent-projects.json');
+// Recent projects (most recent first) live in userData; every .manimui in the projects folder
+// (~/Documents/ManimUI) is listed too. Thumbnails are cached per path, keyed by file mtime.
+const RECENTS = process.env.MANIMUI_RECENTS || path.join(app.getPath('userData'), 'recent-projects.json');
 const THUMBS = path.join(path.dirname(RECENTS), 'project-thumbs');
 const MAX_RECENTS = 60;
 // Liked projects (paths), shown with a heart and listed first; follows renames, dropped on trash.
@@ -338,7 +338,7 @@ function moveFavorite(from, to) {
 }
 
 function projectsDir(create = false) {
-  const d = process.env.MATHSTUDIO_PROJECTS_DIR || path.join(app.getPath('documents'), 'MathStudio');
+  const d = process.env.MANIMUI_PROJECTS_DIR || path.join(app.getPath('documents'), 'ManimUI');
   if (create) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) { /* read-only */ } }
   return d;
 }
@@ -349,15 +349,15 @@ function safeFileName(name) {
 }
 
 /** Projects are saved automatically into the projects folder. Tests that disable autosave
- *  (and don't point MATHSTUDIO_PROJECTS_DIR somewhere temporary) never touch ~/Documents. */
+ *  (and don't point MANIMUI_PROJECTS_DIR somewhere temporary) never touch ~/Documents. */
 function fileAutosave() {
-  return !process.env.MATHSTUDIO_NO_AUTOSAVE || !!process.env.MATHSTUDIO_PROJECTS_DIR;
+  return !process.env.MANIMUI_NO_AUTOSAVE || !!process.env.MANIMUI_PROJECTS_DIR;
 }
 
-/** "<stem>.mstudio" in dir, or "<stem> 2.mstudio", … — `self` (the file being renamed) counts as free. */
+/** "<stem>.manimui" in dir, or "<stem> 2.manimui", … — `self` (the file being renamed) counts as free. */
 function uniqueProjectPath(dir, stem, self) {
   for (let n = 1; ; n++) {
-    const p = path.join(dir, `${stem}${n > 1 ? ' ' + n : ''}.mstudio`);
+    const p = path.join(dir, `${stem}${n > 1 ? ' ' + n : ''}.manimui`);
     if (p === self || !fs.existsSync(p)) return p;
   }
 }
@@ -380,7 +380,7 @@ ipcMain.handle('project:autosave', async (_e, { path: p, data }) => {
     const stem = safeFileName(data && data.settings && data.settings.name);
     let target = p;
     if (!p) target = uniqueProjectPath(dir, stem);
-    else if (path.dirname(p) === dir && path.basename(p, '.mstudio') !== stem) target = uniqueProjectPath(dir, stem, p);
+    else if (path.dirname(p) === dir && path.basename(p, '.manimui') !== stem) target = uniqueProjectPath(dir, stem, p);
     writeAtomic(target, JSON.stringify(withHid(data, p || null), null, 2));
     if (p && target !== p) {
       try { fs.unlinkSync(p); } catch (e) { /* already gone */ }
@@ -426,7 +426,7 @@ function thumbFile(p) {
 }
 
 function projectInfo(p, opened) {
-  const info = { path: p, name: path.basename(p).replace(/\.(mstudio|json)$/i, ''), opened: opened || 0, exists: false, inFolder: false };
+  const info = { path: p, name: path.basename(p).replace(/\.(manimui|json)$/i, ''), opened: opened || 0, exists: false, inFolder: false };
   try {
     const st = fs.statSync(p);
     info.exists = true;
@@ -457,7 +457,7 @@ ipcMain.handle('projects:list', async () => {
   for (const r of readRecents()) if (!seen.has(r.path)) seen.set(r.path, r.opened);
   try {
     for (const f of fs.readdirSync(dir)) {
-      if (!/\.mstudio$/i.test(f) || f.startsWith('.')) continue;
+      if (!/\.manimui$/i.test(f) || f.startsWith('.')) continue;
       const p = path.join(dir, f);
       if (!seen.has(p)) seen.set(p, 0);
     }
@@ -494,12 +494,12 @@ ipcMain.handle('projects:forget', async (_e, p) => {
   return true;
 });
 
-// ---- MathStudio Trash: deleting a project never destroys it. The file moves into
+// ---- ManimUI Trash: deleting a project never destroys it. The file moves into
 // <state>/project-trash/<id>/ with a meta.json (where it came from, when, liked, thumbnail) and can
 // be restored for TRASH_DAYS days. After that — or on "Delete now" / "Empty Trash" — it goes to
 // the macOS Trash (still recoverable from Finder), never straight to unlink.
 const TRASH = path.join(path.dirname(RECENTS), 'project-trash');
-const TRASH_DAYS = Number(process.env.MATHSTUDIO_TRASH_DAYS) || 30;
+const TRASH_DAYS = Number(process.env.MANIMUI_TRASH_DAYS) || 30;
 const DAY = 86400e3;
 
 /** rename, or copy + verify + unlink across volumes */
@@ -522,7 +522,7 @@ function trashItems() {
     const dir = path.join(TRASH, id);
     let files = [];
     try { files = fs.readdirSync(dir); } catch (e) { continue; }
-    const file = files.find((f) => /\.(mstudio|json)$/i.test(f) && f !== 'meta.json' && f !== 'thumb.json');
+    const file = files.find((f) => /\.(manimui|json)$/i.test(f) && f !== 'meta.json' && f !== 'thumb.json');
     if (!file) {
       // nothing left to restore (meta only) — tidy up the empty slot
       if (!files.some((f) => f !== 'meta.json')) try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* */ }
@@ -538,7 +538,7 @@ function trashItems() {
 
 /** Send one trashed project on to the macOS Trash. Keeps it here if that fails. */
 async function purgeTrashItem(it) {
-  if (process.env.MATHSTUDIO_TEST_TRASH_UNLINK) fs.unlinkSync(it.file);
+  if (process.env.MANIMUI_TEST_TRASH_UNLINK) fs.unlinkSync(it.file);
   else await shell.trashItem(it.file);
   fs.rmSync(it.dir, { recursive: true, force: true });
 }
@@ -581,7 +581,7 @@ ipcMain.handle('projects:trashList', async () => {
       const info = projectInfo(it.file, it.opened);
       try { info.thumb = JSON.parse(fs.readFileSync(path.join(it.dir, 'thumb.json'), 'utf8')).png; } catch (e) { delete info.thumb; }
       delete info.thumbStale;
-      info.name = path.basename(it.original).replace(/\.(mstudio|json)$/i, '');
+      info.name = path.basename(it.original).replace(/\.(manimui|json)$/i, '');
       return { ...info, id: it.id, original: it.original, deletedAt: it.deletedAt, expires: it.deletedAt + TRASH_DAYS * DAY, favorite: it.favorite, inFolder: path.dirname(it.original) === projectsDir() };
     }),
   };
@@ -593,7 +593,7 @@ ipcMain.handle('projects:restore', async (_e, id) => {
     const it = trashItems().find((x) => x.id === id);
     if (!it) return { error: 'That project is no longer in the Trash' };
     const home = fs.existsSync(path.dirname(it.original)) ? path.dirname(it.original) : projectsDir(true);
-    const stem = path.basename(it.original).replace(/\.(mstudio|json)$/i, '');
+    const stem = path.basename(it.original).replace(/\.(manimui|json)$/i, '');
     const target = home === path.dirname(it.original) && !fs.existsSync(it.original) ? it.original : uniqueProjectPath(home, stem);
     moveFile(it.file, target);
     try {
@@ -620,16 +620,16 @@ ipcMain.handle('projects:purge', async (_e, id) => {
   return errors.length ? { error: errors.join('\n') } : { ok: true, count: items.length };
 });
 
-/** Copy a project next to itself as "<name> copy[ n].mstudio" and rename it inside. */
+/** Copy a project next to itself as "<name> copy[ n].manimui" and rename it inside. */
 ipcMain.handle('projects:duplicate', async (_e, p) => {
   try {
     const data = JSON.parse(fs.readFileSync(p, 'utf8'));
     const dir = path.dirname(p);
-    const stem = path.basename(p).replace(/\.(mstudio|json)$/i, '');
+    const stem = path.basename(p).replace(/\.(manimui|json)$/i, '');
     let n = 1;
     let target;
-    do target = path.join(dir, `${stem} copy${n > 1 ? ' ' + n : ''}.mstudio`); while (fs.existsSync(target) && ++n);
-    data.settings = { ...(data.settings || {}), name: path.basename(target, '.mstudio') };
+    do target = path.join(dir, `${stem} copy${n > 1 ? ' ' + n : ''}.manimui`); while (fs.existsSync(target) && ++n);
+    data.settings = { ...(data.settings || {}), name: path.basename(target, '.manimui') };
     if (data.historyId) data.historyId = forkHistory(HID_RE.test(String(data.historyId)) ? data.historyId : null);
     fs.writeFileSync(target, JSON.stringify(data, null, 2));
     touchRecent(target);
@@ -642,7 +642,7 @@ ipcMain.handle('projects:duplicate', async (_e, p) => {
 /** Rename the file on disk (and the project name stored inside it). */
 ipcMain.handle('projects:rename', async (_e, { path: p, name }) => {
   try {
-    const target = path.join(path.dirname(p), safeFileName(name) + '.mstudio');
+    const target = path.join(path.dirname(p), safeFileName(name) + '.manimui');
     if (target !== p && fs.existsSync(target)) return { error: `A project called "${path.basename(target)}" already exists there.` };
     const data = JSON.parse(fs.readFileSync(p, 'utf8'));
     data.settings = { ...(data.settings || {}), name: String(name).trim() || 'Untitled' };
@@ -679,7 +679,7 @@ ipcMain.handle('projects:dir', async () => projectsDir(true));
 //   <state>/project-history/<hid>/log.json   {commits:[{id,parent,time,message,label?,hash,…}]} oldest first
 //   <state>/project-history/<hid>/<cid>.json.gz / .gif / .png
 const zlib = require('zlib');
-const HISTORY = process.env.MATHSTUDIO_HISTORY || path.join(path.dirname(RECENTS), 'project-history');
+const HISTORY = process.env.MANIMUI_HISTORY || path.join(path.dirname(RECENTS), 'project-history');
 const HID_RE = /^h[0-9a-z]{6,40}$/;
 const CID_RE = /^[0-9a-f]{12}$/;
 
@@ -821,7 +821,7 @@ ipcMain.handle('history:commit', (_e, { path: p, message, note }) => queued(asyn
       id, parent: head ? head.id : null, time: Date.now(), hash,
       message: String(message || sum.message) + (note ? ` · ${note}` : ''),
       stats: sum.stats,
-      name: set.name || path.basename(p, '.mstudio'),
+      name: set.name || path.basename(p, '.manimui'),
       clips: Array.isArray(data.clips) ? data.clips.length : 0,
       duration: set.duration || 0,
       background: set.background || '#1e1e1e',
@@ -906,10 +906,10 @@ ipcMain.handle('history:checkout', (_e, { hid, id, path: p }) => queued(async ()
   try {
     const data = readVersion(hid, id);
     const version = readLog(hid).findIndex((c) => c.id === id) + 1;
-    const base = safeFileName(`${(data.settings && data.settings.name) || path.basename(p || 'Untitled', '.mstudio')} v${version}`);
+    const base = safeFileName(`${(data.settings && data.settings.name) || path.basename(p || 'Untitled', '.manimui')} v${version}`);
     const dir = p && fs.existsSync(path.dirname(p)) ? path.dirname(p) : projectsDir(true);
     const target = uniqueProjectPath(dir, base);
-    data.settings = { ...(data.settings || {}), name: path.basename(target, '.mstudio') };
+    data.settings = { ...(data.settings || {}), name: path.basename(target, '.manimui') };
     data.historyId = forkHistory(hid, id);
     writeAtomic(target, JSON.stringify(data, null, 2));
     touchRecent(target);
@@ -934,13 +934,13 @@ ipcMain.handle('autosave:write', async (_e, data) => {
 // Show the Projects browser when the app opens. Tests (which all disable
 // autosave) skip it so the popup doesn't cover the UI they drive.
 ipcMain.handle('app:startupProjects', () => {
-  if (process.env.MATHSTUDIO_STARTUP_PROJECTS) return process.env.MATHSTUDIO_STARTUP_PROJECTS !== '0';
-  return !process.env.MATHSTUDIO_NO_AUTOSAVE;
+  if (process.env.MANIMUI_STARTUP_PROJECTS) return process.env.MANIMUI_STARTUP_PROJECTS !== '0';
+  return !process.env.MANIMUI_NO_AUTOSAVE;
 });
 
 ipcMain.handle('autosave:read', async () => {
   try {
-    if (process.env.MATHSTUDIO_NO_AUTOSAVE) return null;
+    if (process.env.MANIMUI_NO_AUTOSAVE) return null;
     return JSON.parse(fs.readFileSync(AUTOSAVE, 'utf8'));
   } catch (e) {
     return null;
@@ -959,10 +959,10 @@ ipcMain.handle('media:choose', async () => {
 
 ipcMain.handle('export:choosePath', async (_e, { name, format }) => {
   const ext = format || 'mp4';
-  if (process.env.MATHSTUDIO_TEST_EXPORT_DIR) return path.join(process.env.MATHSTUDIO_TEST_EXPORT_DIR, `${name}.${ext}`);
+  if (process.env.MANIMUI_TEST_EXPORT_DIR) return path.join(process.env.MANIMUI_TEST_EXPORT_DIR, `${name}.${ext}`);
   const r = await dialog.showSaveDialog(win, {
     title: 'Export video',
-    defaultPath: path.join(app.getPath('videos'), `${name || 'MathStudio'}.${ext}`),
+    defaultPath: path.join(app.getPath('videos'), `${name || 'ManimUI'}.${ext}`),
     filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
   });
   if (r.canceled || !r.filePath) return null;
@@ -993,9 +993,9 @@ ipcMain.handle('open-external', async (_e, url) => {
 ipcMain.handle('window:setTitle', async (_e, t) => { if (win) win.setTitle(t); });
 
 ipcMain.handle('confirm', async (_e, { message, detail, buttons }) => {
-  if (process.env.MATHSTUDIO_TEST_CONFIRM) {
+  if (process.env.MANIMUI_TEST_CONFIRM) {
     (global.__msConfirms = global.__msConfirms || []).push(message);
-    return Number(process.env.MATHSTUDIO_TEST_CONFIRM);
+    return Number(process.env.MANIMUI_TEST_CONFIRM);
   }
   const r = await dialog.showMessageBox(win, {
     type: 'question', message, detail, buttons: buttons || ['OK', 'Cancel'], defaultId: 0, cancelId: (buttons || []).length - 1,
@@ -1004,18 +1004,18 @@ ipcMain.handle('confirm', async (_e, { message, detail, buttons }) => {
 });
 
 // ------------------------------------------------------------------ agent checkpoints (git)
-// A private git repo holding one file, project.mstudio. A commit is made before every message
-// sent to the agent, so any earlier state can be restored with `git show <hash>:project.mstudio`.
+// A private git repo holding one file, project.manimui. A commit is made before every message
+// sent to the agent, so any earlier state can be restored with `git show <hash>:project.manimui`.
 const { execFile } = require('child_process');
-const CHECKPOINTS = process.env.MATHSTUDIO_CHECKPOINTS || path.join(app.getPath('userData'), 'checkpoints');
-const CP_FILE = 'project.mstudio';
+const CHECKPOINTS = process.env.MANIMUI_CHECKPOINTS || path.join(app.getPath('userData'), 'checkpoints');
+const CP_FILE = 'project.manimui';
 let gitQueue = Promise.resolve();
 
 function git(args) {
   return new Promise((resolve, reject) => {
     execFile(
       'git',
-      ['-c', 'user.name=MathStudio', '-c', 'user.email=agent@mathstudio.local', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args],
+      ['-c', 'user.name=ManimUI', '-c', 'user.email=agent@manimui.local', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args],
       { cwd: CHECKPOINTS, maxBuffer: 512 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } },
       (err, stdout, stderr) => (err ? reject(new Error(String(stderr || err.message).trim())) : resolve(stdout)),
     );
@@ -1063,7 +1063,7 @@ ipcMain.handle('checkpoint:dir', async () => CHECKPOINTS);
 // Every agent chat is saved (after each turn) so the user can resume it later, like Claude Code's
 // /resume. One gzipped JSON per chat + a small index with what the history list shows. Chats
 // belong to a project file (`path`); a chat of a project that has no file yet is matched by `sid`.
-const CHATS = process.env.MATHSTUDIO_CHATS || path.join(app.getPath('userData'), 'agent-chats');
+const CHATS = process.env.MANIMUI_CHATS || path.join(app.getPath('userData'), 'agent-chats');
 const CHAT_ID_RE = /^c[a-z0-9]{6,40}$/;
 const chatIndexFile = () => path.join(CHATS, 'index.json');
 function readChatIndex() {
@@ -1139,9 +1139,9 @@ function moveChats(from, to) {
 // ------------------------------------------------------------------ AI agent (OpenRouter or any OpenAI-compatible API)
 // Keys never reach the renderer: requests are proxied from here. The provider and its model
 // options live in settings.json (`ai`); OpenRouter is the default.
-const DEFAULT_OR_MODEL = process.env.MATHSTUDIO_AI_MODEL || 'anthropic/claude-haiku-5.5';
-// MATHSTUDIO_OPENROUTER_URL points it at a local mock (tests)
-const OR_BASE = (process.env.MATHSTUDIO_OPENROUTER_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
+const DEFAULT_OR_MODEL = process.env.MANIMUI_AI_MODEL || 'anthropic/claude-haiku-5.5';
+// MANIMUI_OPENROUTER_URL points it at a local mock (tests)
+const OR_BASE = (process.env.MANIMUI_OPENROUTER_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
 const EFFORTS = ['off', 'minimal', 'low', 'medium', 'high'];
 const aiRequests = new Map(); // reqId -> AbortController
 
@@ -1161,7 +1161,7 @@ function readEnvFile() {
 
 // App settings (Settings popup): render quality + the OpenRouter key typed in the app. Stored as
 // plain JSON with owner-only permissions in userData, like a .env file would be.
-const SETTINGS_FILE = process.env.MATHSTUDIO_SETTINGS || path.join(app.getPath('userData'), 'settings.json');
+const SETTINGS_FILE = process.env.MANIMUI_SETTINGS || path.join(app.getPath('userData'), 'settings.json');
 const QUALITIES = ['auto', 'high', 'balanced', 'low'];
 
 function readSettings() {
@@ -1380,7 +1380,7 @@ ipcMain.handle('settings:set', async (_e, patch) => {
 ipcMain.handle('settings:testKey', async (_e, candidate) => {
   const key = String(candidate || '').trim() || aiKey();
   if (!key) return { ok: false, error: 'No key to test.' };
-  if (process.env.MATHSTUDIO_TEST_KEYCHECK) return { ok: key === process.env.MATHSTUDIO_TEST_KEYCHECK, label: 'test', error: key === process.env.MATHSTUDIO_TEST_KEYCHECK ? undefined : 'OpenRouter rejected this key (401).' };
+  if (process.env.MANIMUI_TEST_KEYCHECK) return { ok: key === process.env.MANIMUI_TEST_KEYCHECK, label: 'test', error: key === process.env.MANIMUI_TEST_KEYCHECK ? undefined : 'OpenRouter rejected this key (401).' };
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 12000);
   try {
@@ -1523,7 +1523,7 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
     for (let attempt = 0; attempt < 3; attempt++) {
       const headers = { 'Content-Type': 'application/json' };
       if (key) headers.Authorization = `Bearer ${key}`;
-      if (t.kind === 'openrouter') headers['X-Title'] = 'MathStudio';
+      if (t.kind === 'openrouter') headers['X-Title'] = 'ManimUI';
       res = await fetch(`${t.base}/chat/completions`, {
         method: 'POST',
         signal: ctrl.signal,
@@ -1593,11 +1593,11 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
   // with the user's own provider key (BYOK) OpenRouter reports cost 0; show what the provider bills
   const upstream = usage && usage.cost_details && usage.cost_details.upstream_inference_cost;
   if (usage && !usage.cost && typeof upstream === 'number') usage.cost = upstream;
-  // MATHSTUDIO_AI_LOG=<file> appends one JSON line per call (provider, tokens, cache hits): for checking prompt caching
-  if (process.env.MATHSTUDIO_AI_LOG && usage) {
+  // MANIMUI_AI_LOG=<file> appends one JSON line per call (provider, tokens, cache hits): for checking prompt caching
+  if (process.env.MANIMUI_AI_LOG && usage) {
     const d = usage.prompt_tokens_details || {};
     const line = { t: new Date().toISOString(), provider, finish, prompt: usage.prompt_tokens, cached: d.cached_tokens || 0, written: d.cache_write_tokens || 0, out: usage.completion_tokens, cost: usage.cost };
-    try { fs.appendFileSync(process.env.MATHSTUDIO_AI_LOG, `${JSON.stringify(line)}\n`); } catch (_) { /* best effort */ }
+    try { fs.appendFileSync(process.env.MANIMUI_AI_LOG, `${JSON.stringify(line)}\n`); } catch (_) { /* best effort */ }
   }
   if (!provider && t.kind === 'custom') provider = t.label;
   return { message: msg, finish, usage, provider };
@@ -1611,21 +1611,21 @@ ipcMain.handle('ai:chat', async (e, { reqId, body }) => {
 //   Mac (signed + notarized release build) → Squirrel swaps the .app from the zip.
 // Any other install (.deb, a Mac build made locally with the non-commercial library) is only told
 // that a new version exists, with a link to the download page; from source there is nothing to do.
-// MATHSTUDIO_UPDATE_URL points the updater at a plain folder of release files instead (tests);
-// MATHSTUDIO_UPDATE_MODE forces install|notify|source, MATHSTUDIO_UPDATE_CACHE names the download
-// cache folder, MATHSTUDIO_UPDATE_DELAY_MS sets the first background check (default 10 s).
+// MANIMUI_UPDATE_URL points the updater at a plain folder of release files instead (tests);
+// MANIMUI_UPDATE_MODE forces install|notify|source, MANIMUI_UPDATE_CACHE names the download
+// cache folder, MANIMUI_UPDATE_DELAY_MS sets the first background check (default 10 s).
 const PKG = require('../package.json');
 const REPO = (() => {
   const m = String((PKG.repository && PKG.repository.url) || PKG.repository || '').match(/github(?:\.com[:/]|:)([^/\s]+)\/([^/.#\s]+)/);
   return m ? { owner: m[1], repo: m[2] } : null;
 })();
 const RELEASES_PAGE = REPO ? `https://github.com/${REPO.owner}/${REPO.repo}/releases/latest` : null;
-const UPDATE_URL = process.env.MATHSTUDIO_UPDATE_URL || '';
-const UPDATE_FIRST_CHECK_MS = Number(process.env.MATHSTUDIO_UPDATE_DELAY_MS) || 10000;
+const UPDATE_URL = process.env.MANIMUI_UPDATE_URL || '';
+const UPDATE_FIRST_CHECK_MS = Number(process.env.MANIMUI_UPDATE_DELAY_MS) || 10000;
 const UPDATE_EVERY_MS = 6 * 3600 * 1000;
 
 function updateMode() {
-  const forced = process.env.MATHSTUDIO_UPDATE_MODE;
+  const forced = process.env.MANIMUI_UPDATE_MODE;
   if (['install', 'notify', 'source'].includes(forced)) return forced;
   if (!app.isPackaged && !UPDATE_URL) return 'source';
   if (!UPDATE_URL && !REPO) return 'source';
@@ -1633,7 +1633,7 @@ function updateMode() {
   if (WIN && app.isPackaged) return 'install';
   // packaging/mac/build.sh marks builds that carry the non-commercial library (local installs
   // only): updating would swap them for the public build
-  if (process.platform === 'darwin' && app.isPackaged && !PKG.mathstudioLocalBuild) return 'install';
+  if (process.platform === 'darwin' && app.isPackaged && !PKG.manimuiLocalBuild) return 'install';
   return 'notify';
 }
 
@@ -1691,14 +1691,14 @@ function getUpdater() {
   // Our own config file only names the download cache; the feed comes from setFeedURL below, so
   // nothing depends on the app-update.yml electron-builder may or may not have written.
   const cfg = path.join(app.getPath('userData'), 'updater.yml');
-  const cacheName = (process.env.MATHSTUDIO_UPDATE_CACHE || 'mathstudio-updater').replace(/[^\w.-]/g, '');
+  const cacheName = (process.env.MANIMUI_UPDATE_CACHE || 'manimui-updater').replace(/[^\w.-]/g, '');
   try { fs.writeFileSync(cfg, `updaterCacheDirName: ${cacheName}\n`); } catch (e) { /* read-only? cache falls back to app name */ }
   u.updateConfigPath = cfg;
   u.forceDevUpdateConfig = true; // we decide when the updater may run (updateMode), not electron-updater
   u.autoDownload = false;
   u.autoInstallOnAppQuit = updateMode() === 'install';
   u.allowPrerelease = false;
-  u.disableDifferentialDownload = !!process.env.MATHSTUDIO_UPDATE_NO_DIFF;
+  u.disableDifferentialDownload = !!process.env.MANIMUI_UPDATE_NO_DIFF;
   u.logger = { info: (m) => console.log('[update]', m), warn: (m) => console.warn('[update]', m), error: (m) => console.error('[update]', m), debug: () => {} };
   // single-range requests for the differential download, like GitHub (which serves no multipart ranges)
   if (UPDATE_URL) u.setFeedURL({ provider: 'generic', url: UPDATE_URL, useMultipleRangeRequest: false });
@@ -1746,8 +1746,8 @@ function friendlyUpdateError(e) {
   const http = msg.match(/(?:HttpError: |^)([45]\d\d)\b/);
   if (http) return `The update server answered with an error (HTTP ${http[1]}). Try again later.`;
   if (/EACCES|EPERM|read-only/i.test(msg)) {
-    const where = process.env.APPIMAGE ? 'Move the AppImage to a folder you can write to' : process.platform === 'darwin' ? 'Move MathStudio to the Applications folder' : 'Reinstall MathStudio';
-    return `MathStudio cannot replace its own files (${msg.split('\n')[0]}). ${where}, or download the new version by hand.`;
+    const where = process.env.APPIMAGE ? 'Move the AppImage to a folder you can write to' : process.platform === 'darwin' ? 'Move ManimUI to the Applications folder' : 'Reinstall ManimUI';
+    return `ManimUI cannot replace its own files (${msg.split('\n')[0]}). ${where}, or download the new version by hand.`;
   }
   return msg.split('\n')[0].slice(0, 300);
 }

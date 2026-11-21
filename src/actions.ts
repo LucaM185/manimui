@@ -535,7 +535,7 @@ export async function saveProject(saveAs = false) {
   const p = await window.studio.saveProject(filePath, project, saveAs);
   if (p) {
     S().markSaved(p);
-    const name = p.split('/').pop()!.replace(/\.mstudio$/, '');
+    const name = p.split('/').pop()!.replace(/\.manimui$/, '');
     if (project.settings.name === 'Untitled') {
       S().commit((pr) => {
         pr.settings.name = name;
