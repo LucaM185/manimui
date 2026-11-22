@@ -1,7 +1,7 @@
 {
   "name": "manimui",
   "productName": "ManimUI",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A visual IDE for ManimGL animations",
   "repository": {
     "type": "git",
